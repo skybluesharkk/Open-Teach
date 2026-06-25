@@ -1,0 +1,50 @@
+robot_name: rb_arm
+
+detector:
+  _target_: openteach.components.detector.oculus.OculusVRHandDetector
+  host: ${host_address}
+  oculus_port: ${oculus_reciever_port}
+  keypoint_pub_port: ${keypoint_port}
+  button_port: ${resolution_button_port}
+  button_publish_port: ${resolution_button_publish_port}
+  teleop_reset_port: ${teleop_reset_port}
+  teleop_reset_publish_port: ${teleop_reset_publish_port}
+
+transforms:
+  -
+    _target_: openteach.components.detector.keypoint_transform.TransformHandPositionCoords
+    host: ${host_address}
+    keypoint_port: ${keypoint_port}
+    transformation_port: ${transformed_position_keypoint_port}
+    moving_average_limit: 1
+
+visualizers:
+  -
+    _target_: openteach.components.visualizers.visualizer_2d.Hand2DVisualizer
+    host: ${host_address}
+    transformed_keypoint_port: ${transformed_position_keypoint_port}
+    oculus_feedback_port: ${oculus_graph_port}
+    display_plot: ${visualize_right_2d}
+
+operators:
+  -
+    _target_: openteach.components.operators.rb_arm.RBArmOperator
+    host: ${host_address}
+    transformed_keypoints_port: ${transformed_position_keypoint_port}
+    robot_ip: "10.0.2.7"
+    arm_resolution_port: ${resolution_button_publish_port}
+    use_filter: True
+    teleoperation_reset_port: ${teleop_reset_publish_port}
+    dead_zone_mm: 5.0    # 이 거리(mm) 이상 움직여야 로봇 이동 (떨림 무시)
+    latency_frames: 0    # 지연 프레임 수 (60fps 기준: 30 = 0.5초 지연)
+    wrist_only: True     # True: 손목 위치만 추적(회전 무시) / False: 손 방향도 추적
+
+controllers:
+  -
+    _target_: openteach.robot.rb_arm.RBArm
+    robot_ip: "10.0.2.7"
+
+recorded_data:
+  -
+    - joint_states
+    - cartesian_states
