@@ -1,3 +1,11 @@
-from .realsense import RealsenseCamera
-from .fish_eye_cam import FishEyeCamera
+try:
+    from .realsense import RealsenseCamera
+except ImportError:
+    pass
+
+try:
+    from .fish_eye_cam import FishEyeCamera
+except ImportError:
+    pass
+
 #from .xela import XelaCurvedSensors
