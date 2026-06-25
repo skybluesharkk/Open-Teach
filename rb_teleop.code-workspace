@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "Open-Teach",
+			"path": "."
+		},
+		{
+			"name": "rbpodo",
+			"path": "../rbpodo"
+		}
+	],
+	"settings": {}
+}
