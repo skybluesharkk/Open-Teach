@@ -20,10 +20,11 @@ transforms:
 
 visualizers:
   -
-    _target_: openteach.components.visualizers.visualizer_2d.Hand2DVisualizer
+    _target_: openteach.components.visualizers.teleop_info_visualizer.TeleopInfoVisualizer
     host: ${host_address}
     transformed_keypoint_port: ${transformed_position_keypoint_port}
     oculus_feedback_port: ${oculus_graph_port}
+    robot_ip: "10.0.2.7"
     display_plot: ${visualize_right_2d}
 
 operators:
@@ -36,13 +37,23 @@ operators:
     use_filter: True
     teleoperation_reset_port: ${teleop_reset_publish_port}
     dead_zone_mm: 5.0    # 이 거리(mm) 이상 움직여야 로봇 이동 (떨림 무시)
-    latency_frames: 0    # 지연 프레임 수 (60fps 기준: 30 = 0.5초 지연)
-    wrist_only: True     # True: 손목 위치만 추적(회전 무시) / False: 손 방향도 추적
+    latency_frames: 0    # 지연 프레임 수
+    wrist_only: True     # True: 손목 위치만 추적(회전 무시)
+    control_hz: 20       # 오퍼레이터 루프 Hz
+    move_scale: 1.0      # 손 이동량 → 로봇 이동량 비율 (1:1, 클램프 100mm로 안전)
+    tap_to_move: True    # True: Middle Pinch 한 번에 한 번 move_l / False: 연속 servo
 
 controllers:
   -
     _target_: openteach.robot.rb_arm.RBArm
     robot_ip: "10.0.2.7"
+    speed_bar: 0.05      # 전체 속도 (0~1), 낮출수록 느리고 안전
+    # workspace_limits: 로봇 베이스 기준 XYZ 이동 범위 (mm)
+    # monitor_tcp.py로 실제 작업 공간 확인 후 설정
+    # workspace_limits:
+    #   x: [-400, 400]
+    #   y: [-600, 100]
+    #   z: [200, 1000]
 
 recorded_data:
   -
