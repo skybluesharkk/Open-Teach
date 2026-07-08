@@ -1,0 +1,469 @@
+<title>RB5-850 Workspace Limits</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f1117;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  canvas {
+    border-radius: 10px;
+    border: 1px solid #2d3748;
+    cursor: grab;
+    background: #0d1117;
+  }
+  canvas:active { cursor: grabbing; }
+  .hint {
+    font-size: 12px;
+    color: #718096;
+  }
+  #right {
+    width: 300px;
+    padding: 20px 16px;
+    background: #111827;
+    border-left: 1px solid #1f2937;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+  h2 { font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; }
+  .section { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: #1a2232;
+  }
+  .row .label { color: #94a3b8; }
+  .row .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px; font-size: 13px;
+  }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  }
+  .line-swatch {
+    width: 24px; height: 3px; flex-shrink: 0; border-radius: 2px;
+  }
+  .box-swatch {
+    width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; border: 2px solid;
+    background: transparent;
+  }
+  hr { border: none; border-top: 1px solid #1f2937; }
+  .note {
+    font-size: 11px;
+    color: #64748b;
+    line-height: 1.6;
+  }
+  .axis-x { color: #f87171; }
+  .axis-y { color: #4ade80; }
+  .axis-z { color: #60a5fa; }
+</style>
+
+<div id="left">
+  <canvas id="c" width="680" height="580"></canvas>
+  <div class="hint">드래그로 회전 · 스크롤로 확대/축소</div>
+</div>
+
+<div id="right">
+  <div class="section">
+    <h1>RB5-850 Workspace Limits</h1>
+    <div class="note">Reach 927.7mm 기준 보수적 작업공간 제안.<br>Working pose TCP를 중심으로 설정.</div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <h2>제안 작업공간 범위</h2>
+    <div class="row">
+      <span class="label axis-x">X (전후/Forward)</span>
+      <span class="val">50 ~ 500 mm</span>
+    </div>
+    <div class="row">
+      <span class="label axis-y">Y (좌우/Lateral)</span>
+      <span class="val">−300 ~ 100 mm</span>
+    </div>
+    <div class="row">
+      <span class="label axis-z">Z (상하/Height)</span>
+      <span class="val">200 ~ 700 mm</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <h2>기준 위치</h2>
+    <div class="row">
+      <span class="label">Home TCP</span>
+      <span class="val" style="font-size:11px">255, −120, 553</span>
+    </div>
+    <div class="row">
+      <span class="label">Home 수평 반경</span>
+      <span class="val">282 mm (&gt; 250)</span>
+    </div>
+    <div class="row">
+      <span class="label">Robot Reach</span>
+      <span class="val">927.7 mm</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <h2>범례</h2>
+    <div class="legend-item"><div class="line-swatch" style="background:#60a5fa40;border:1.5px solid #60a5fa"></div> Reach sphere (927.7 mm)</div>
+    <div class="legend-item"><div class="box-swatch" style="border-color:#22c55e"></div> 실제 가용 영역 (박스 − 원통)</div>
+    <div class="legend-item"><div class="box-swatch" style="border-color:#22c55e2e"></div> 명목 박스 (참고용, 희미한 선)</div>
+    <div class="legend-item"><div class="box-swatch" style="border-color:#ef4444;border-radius:50%"></div> 특이점 금지구역 (기둥 반경 250mm)</div>
+    <div class="legend-item"><div class="dot" style="background:#ef4444"></div> 지난번 갇힌 위치 (50, −131, 671)</div>
+    <div class="legend-item"><div class="dot" style="background:#f97316"></div> Home TCP (원통 밖 시작 위치)</div>
+    <div class="legend-item"><div class="dot" style="background:#f1f5f9"></div> Robot Base (0, 0, 0)</div>
+    <div class="legend-item"><div class="line-swatch" style="background:#f87171"></div> X축 (전후 Forward)</div>
+    <div class="legend-item"><div class="line-swatch" style="background:#4ade80"></div> Y축 (좌우 Lateral)</div>
+    <div class="legend-item"><div class="line-swatch" style="background:#60a5fa"></div> Z축 (상하 Height)</div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <h2>특이점 금지구역이란?</h2>
+    <div class="note">
+      TCP가 로봇 기둥(base 축) 바로 위 근처로 오면
+      역기구학 해가 퇴화되어 관절만 크게 돌고
+      TCP는 제자리에 갇히는 현상이 발생합니다.<br><br>
+      base 중심 수평 반경 250mm 안쪽(빨간 원통)을
+      소프트웨어로 금지하며, TCP 목표가 안으로
+      들어오면 반경 방향으로 밀어냅니다.
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <h2>안전 체크</h2>
+    <div class="row">
+      <span class="label">박스 최대 대각선</span>
+      <span class="val">≈ 910 mm</span>
+    </div>
+    <div class="row">
+      <span class="label">Reach 대비</span>
+      <span class="val">98.1 %</span>
+    </div>
+    <div class="note">TCP가 작업공간 박스 밖으로 나가려 하면<br>해당 축을 경계에서 클램핑합니다.</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// World params (mm)
+const REACH = 927.7;
+const WS = { xMin:50, xMax:500, yMin:-300, yMax:100, zMin:200, zMax:700 };
+const TCP_PT = [255, -120, 553];   // HOME_TCP_POS (servo_teleop.py) — 수평 반경 282mm > 250mm
+const R_MIN_XY = 250;               // 특이점 금지 원통 반경 (mm)
+const STUCK_PT = [50, -131, 671];   // 지난번 갇힌 TCP 위치
+
+// Camera
+let rotX = -0.38, rotY = 0.55;
+let scale = 0.34;
+const CX = 340, CY = 295;
+const FOV = 1000;
+
+// Drag
+let drag = false, lx = 0, ly = 0;
+canvas.addEventListener('mousedown', e => { drag=true; lx=e.clientX; ly=e.clientY; });
+canvas.addEventListener('mousemove', e => {
+  if (!drag) return;
+  rotY += (e.clientX - lx) * 0.008;
+  rotX += (e.clientY - ly) * 0.008;
+  rotX = Math.max(-1.4, Math.min(0.2, rotX));
+  lx=e.clientX; ly=e.clientY;
+  render();
+});
+canvas.addEventListener('mouseup', () => drag=false);
+canvas.addEventListener('mouseleave', () => drag=false);
+canvas.addEventListener('wheel', e => {
+  scale *= e.deltaY > 0 ? 0.93 : 1.07;
+  scale = Math.max(0.1, Math.min(1.0, scale));
+  render();
+}, {passive:true});
+
+function rotate(x, y, z) {
+  // Rotate around Y
+  let x1 = x*Math.cos(rotY) + z*Math.sin(rotY);
+  let y1 = y;
+  let z1 = -x*Math.sin(rotY) + z*Math.cos(rotY);
+  // Rotate around X
+  let x2 = x1;
+  let y2 = y1*Math.cos(rotX) - z1*Math.sin(rotX);
+  let z2 = y1*Math.sin(rotX) + z1*Math.cos(rotX);
+  return [x2, y2, z2];
+}
+
+function project(x, y, z) {
+  // 로봇 좌표(Z-up) → 렌더 좌표(Y-up): 로봇 Z를 화면 위쪽으로, 로봇 Y를 깊이로
+  const [rx, ry, rz] = rotate(x, z, y);
+  const d = FOV / (FOV + rz + 600);
+  return {
+    sx: CX + rx * d * scale,
+    sy: CY - ry * d * scale,
+    depth: rz
+  };
+}
+
+function line3d(x1,y1,z1, x2,y2,z2, style, lw=1) {
+  const a = project(x1,y1,z1), b = project(x2,y2,z2);
+  ctx.save();
+  ctx.strokeStyle = style;
+  ctx.lineWidth = lw;
+  ctx.beginPath();
+  ctx.moveTo(a.sx, a.sy);
+  ctx.lineTo(b.sx, b.sy);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function circle3d(cx,cy,cz, r, axis, color, lw=1, dash=[]) {
+  const N = 80;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.setLineDash(dash);
+  ctx.beginPath();
+  for (let i=0; i<=N; i++) {
+    const a = (i/N)*Math.PI*2;
+    let px, py, pz;
+    if (axis==='z') { px=cx+r*Math.cos(a); py=cy+r*Math.sin(a); pz=cz; }
+    else if (axis==='y') { px=cx+r*Math.cos(a); py=cy; pz=cz+r*Math.sin(a); }
+    else { px=cx; py=cy+r*Math.cos(a); pz=cz+r*Math.sin(a); }
+    const p = project(px,py,pz);
+    i===0 ? ctx.moveTo(p.sx,p.sy) : ctx.lineTo(p.sx,p.sy);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function dot3d(x,y,z, r, color, ring) {
+  const p = project(x,y,z);
+  ctx.save();
+  if (ring) {
+    ctx.strokeStyle = ring;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r+3, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, r, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function label3d(x,y,z, text, color, dx=8, dy=0) {
+  const p = project(x,y,z);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = '12px monospace';
+  ctx.fillText(text, p.sx+dx, p.sy+dy);
+  ctx.restore();
+}
+
+function drawBox(ws, color, lw=1.5) {
+  const {xMin,xMax,yMin,yMax,zMin,zMax} = ws;
+  const corners = [
+    [xMin,yMin,zMin],[xMax,yMin,zMin],[xMax,yMax,zMin],[xMin,yMax,zMin],
+    [xMin,yMin,zMax],[xMax,yMin,zMax],[xMax,yMax,zMax],[xMin,yMax,zMax],
+  ];
+  const edges = [
+    [0,1],[1,2],[2,3],[3,0],
+    [4,5],[5,6],[6,7],[7,4],
+    [0,4],[1,5],[2,6],[3,7],
+  ];
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  for (const [a,b] of edges) {
+    const p1=project(...corners[a]), p2=project(...corners[b]);
+    ctx.beginPath();
+    ctx.moveTo(p1.sx,p1.sy);
+    ctx.lineTo(p2.sx,p2.sy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSphere(r, color, nLat=8, nLon=8) {
+  for (let i=1; i<nLat; i++) {
+    const lat = (i/nLat - 0.5)*Math.PI;
+    const rr = r*Math.cos(lat);
+    const h  = r*Math.sin(lat);
+    circle3d(0,0,h, rr, 'z', color, 0.8, [6,6]);
+  }
+  for (let i=0; i<nLon; i++) {
+    const lon = (i/nLon)*Math.PI;
+    circle3d(0,0,0, r, 'y', color, 0.8, [6,6]);
+    const rx = r;
+    // tilt great circle
+    const N=80, col=color;
+    ctx.save();
+    ctx.strokeStyle=col; ctx.lineWidth=0.8; ctx.setLineDash([6,6]);
+    ctx.beginPath();
+    for (let j=0;j<=N;j++) {
+      const a=(j/N)*Math.PI*2;
+      const px=r*Math.cos(a)*Math.cos(lon);
+      const py=r*Math.sin(a);
+      const pz=r*Math.cos(a)*Math.sin(lon);
+      const p=project(px,py,pz);
+      j===0?ctx.moveTo(p.sx,p.sy):ctx.lineTo(p.sx,p.sy);
+    }
+    ctx.stroke(); ctx.restore();
+  }
+}
+
+function effectiveOutlineXY() {
+  // 실제 가용 단면: 박스 사각형에서 특이점 원통이 파먹은 폴리곤 (mm)
+  // 아크: θ=+23.6°(229,100) → θ=−78.5°(50,−245), 이후 사각형 모서리로 닫음
+  const thMax = Math.asin(WS.yMax / R_MIN_XY);
+  const thMin = -Math.acos(WS.xMin / R_MIN_XY);
+  const pts = [];
+  const N = 28;
+  for (let i = 0; i <= N; i++) {
+    const th = thMax + (thMin - thMax) * i / N;
+    pts.push([R_MIN_XY * Math.cos(th), R_MIN_XY * Math.sin(th)]);
+  }
+  pts.push([WS.xMin, WS.yMin]);
+  pts.push([WS.xMax, WS.yMin]);
+  pts.push([WS.xMax, WS.yMax]);
+  pts.push([R_MIN_XY * Math.cos(thMax), WS.yMax]);  // 아크 시작점으로 복귀 (폐곡선)
+  return pts;
+}
+
+function drawEffectiveWS(color, lw=2.0) {
+  const pts = effectiveOutlineXY();
+  // 상/하면 외곽선
+  for (const z of [WS.zMin, WS.zMax]) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    pts.forEach(([x,y], i) => {
+      const p = project(x, y, z);
+      i === 0 ? ctx.moveTo(p.sx, p.sy) : ctx.lineTo(p.sx, p.sy);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+  // 수직 모서리: 사각형 꼭짓점 + 아크 양 끝 + 아크 중간 몇 개
+  const verts = [pts[0], pts[Math.floor(pts.length/4)], pts[28], // 아크 시작/중간/끝
+                 [WS.xMin, WS.yMin], [WS.xMax, WS.yMin], [WS.xMax, WS.yMax]];
+  for (const [x,y] of verts) {
+    line3d(x, y, WS.zMin, x, y, WS.zMax, color + 'aa', lw * 0.6);
+  }
+}
+
+function drawCylinder(r, z0, z1, color) {
+  // 수평 링 여러 개 + 수직선으로 원통 표현
+  const nRings = 5;
+  for (let i = 0; i <= nRings; i++) {
+    const z = z0 + (z1 - z0) * i / nRings;
+    circle3d(0, 0, z, r, 'z', color, i === 0 || i === nRings ? 1.6 : 0.7, [4,4]);
+  }
+  const nVert = 12;
+  for (let i = 0; i < nVert; i++) {
+    const a = (i / nVert) * Math.PI * 2;
+    const px = r * Math.cos(a), py = r * Math.sin(a);
+    line3d(px, py, z0, px, py, z1, color + '99', 0.8);
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Grid plane (Y=0, XZ plane roughly)
+  ctx.save();
+  ctx.strokeStyle = '#1e2736';
+  ctx.lineWidth = 0.5;
+  const gS = 100, gN = 10;
+  // 바닥 그리드: 로봇 Z=0 평면 (X-Y 평면)
+  for (let i=-gN; i<=gN; i++) {
+    line3d(i*gS, -gN*gS, 0, i*gS, gN*gS, 0, '#1e2736', 0.5);
+    line3d(-gN*gS, i*gS, 0, gN*gS, i*gS, 0, '#1e2736', 0.5);
+  }
+  ctx.restore();
+
+  // Reach sphere
+  drawSphere(REACH, '#3b82f655', 10, 8);
+
+  // 특이점 금지 원통 (base 기둥 주변, 바닥부터 workspace 상단까지)
+  drawCylinder(R_MIN_XY, 0, WS.zMax + 100, '#ef4444');
+  label3d(R_MIN_XY, 0, WS.zMax + 130, '특이점 금지구역 r=250mm', '#f87171', 6, 0);
+
+  // 명목 박스 (희미하게) — 참고용
+  drawBox(WS, '#22c55e2e', 1.0);
+  // 실제 가용 영역 = 박스 − 원통 (원통이 파먹은 둥근 단면)
+  drawEffectiveWS('#22c55e', 2.2);
+
+  // Dimension labels on box edges
+  const {xMin,xMax,yMin,yMax,zMin,zMax} = WS;
+  const midX=(xMin+xMax)/2, midY=(yMin+yMax)/2, midZ=(zMin+zMax)/2;
+  label3d(midX, yMin, zMin, `${xMax-xMin}mm (X)`, '#22c55e', -10, -6);
+  label3d(xMax, midY, zMin, `${yMax-yMin}mm (Y)`, '#22c55e', 6, 0);
+  label3d(xMax, yMin, midZ, `${zMax-zMin}mm (Z)`, '#22c55e', 6, 0);
+
+  // Axes
+  const AL = 350;
+  line3d(0,0,0, AL,0,0, '#f87171', 2);
+  line3d(0,0,0, 0,AL,0, '#4ade80', 2);
+  line3d(0,0,0, 0,0,AL, '#60a5fa', 2);
+  label3d(AL+10,0,0, 'X (전방)', '#f87171', 4, 4);
+  label3d(0,AL+10,0, 'Y (좌)', '#4ade80', 4, 4);
+  label3d(0,0,AL+10, 'Z (상)', '#60a5fa', 4, 4);
+
+  // Working pose TCP
+  const [tx,ty,tz] = TCP_PT;
+  // line from base to TCP
+  ctx.save();
+  ctx.strokeStyle = '#f97316aa';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,4]);
+  const ba=project(0,0,0), ta=project(tx,ty,tz);
+  ctx.beginPath();
+  ctx.moveTo(ba.sx,ba.sy);
+  ctx.lineTo(ta.sx,ta.sy);
+  ctx.stroke();
+  ctx.restore();
+
+  dot3d(tx,ty,tz, 7, '#f97316', '#fdba74');
+  label3d(tx,ty,tz, `TCP (${tx}, ${ty}, ${tz})`, '#fdba74', 10, -4);
+
+  // 지난번 갇힌 위치 — 금지 원통 안쪽에 있음을 표시
+  const [sx2,sy2,sz2] = STUCK_PT;
+  dot3d(sx2,sy2,sz2, 6, '#ef4444', '#fca5a5');
+  label3d(sx2,sy2,sz2, `갇힌 위치 (${sx2}, ${sy2}, ${sz2})`, '#fca5a5', 10, 12);
+
+  // Base
+  dot3d(0,0,0, 5, '#f1f5f9', '#94a3b8');
+  label3d(0,0,0, 'Base (0,0,0)', '#94a3b8', 8, 12);
+}
+
+render();
+</script>
