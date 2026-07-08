@@ -7,8 +7,12 @@ from .robot import RobotWrapper
 # rbpodo TCP format: [X(mm), Y(mm), Z(mm), Rx(deg), Ry(deg), Rz(deg)]
 # Open-Teach Cartesian format: [x(m), y(m), z(m), qx, qy, qz, qw]
 
-_SERVO_T1 = 0.02   # look-ahead time (s)
-_SERVO_T2 = 0.1    # smoothing time (s)
+# 60Hz 명령 주기(16.7ms) 기준 servo 파라미터
+# t1: look-ahead time — 명령 주기보다 약간 크게 (로봇이 다음 명령 올 때까지 부드럽게 이동)
+# t2: 스무딩 시간 — 클수록 부드럽지만 반응 느려짐
+# C++ 예제(200Hz)는 t1=0.01 사용. 60Hz에서는 t1=0.02가 적절.
+_SERVO_T1 = 0.02   # look-ahead time (s) — 1/60 ≈ 0.017s 보다 약간 크게
+_SERVO_T2 = 0.05   # smoothing time (s) — 0.1→0.05로 줄여 반응속도 향상
 _SERVO_GAIN = 1.0
 _SERVO_ALPHA = 1.0
 
@@ -31,7 +35,13 @@ def _cart_to_tcp(cartesian_coords):
 
 
 class RBArm(RobotWrapper):
-    def __init__(self, robot_ip: str, speed_bar: float = 0.1, record: bool = False):
+    def __init__(
+        self,
+        robot_ip: str,
+        speed_bar: float = 0.1,
+        record: bool = False,
+        workspace_limits: dict = None,
+    ):
         self._rc = rb.ResponseCollector()
         self._robot = rb.Cobot(robot_ip)
 
@@ -43,18 +53,23 @@ class RBArm(RobotWrapper):
         self._data_frequency = 60
         self._servo_mode = False  # arm_control 첫 호출 시 disable_waiting_ack로 전환
 
+        # 작업 공간 제한 (mm, 로봇 베이스 기준)
+        # None이면 제한 없음. 초과 시 해당 축만 클램프.
+        # 예: {'x': [-400, 400], 'y': [-600, 100], 'z': [200, 1000]}
+        self._workspace = workspace_limits
+
         # [0,0,0,0,0,0] 홈 자세는 IK 특이점 — 작업 자세로 이동
-        self._move_to_working_pose()
+        self._move_to_working_joints()
 
     # ── 초기화 헬퍼 ──────────────────────────────────────────────────────
 
-    def _move_to_working_pose(self):
-        """텔레오퍼레이션 시작 전 작업 자세로 이동"""
-        working_pose = np.array([350.51, 3.99, 80.47, -85.71, 90.44, -0.01])
+    def _move_to_working_joints(self):
+        """텔레오퍼레이션 시작 전 작업 자세(joints)로 이동"""
+        working_pose = np.array([0, -50, 135, -70, 85, -5])
         self._robot.move_j(self._rc, working_pose, 30, 60)
         if self._robot.wait_for_move_started(self._rc, 2.0).is_success():
             self._robot.wait_for_move_finished(self._rc)
-        print('[RBArm] 작업 자세 이동 완료')
+        print('[RBArm] 작업 자세(joints) 이동 완료')
 
     # ── RobotWrapper 필수 프로퍼티 ──────────────────────────────────────
 
@@ -126,6 +141,17 @@ class RBArm(RobotWrapper):
             self._robot.wait_for_move_finished(self._rc)
         self._robot.disable_waiting_ack(self._rc)
 
+    def _clamp_workspace(self, tcp_mm: np.ndarray) -> np.ndarray:
+        """목표 TCP가 작업 공간 한계를 벗어나면 클램프"""
+        if self._workspace is None:
+            return tcp_mm
+        result = tcp_mm.copy()
+        for i, axis in enumerate(['x', 'y', 'z']):
+            if axis in self._workspace:
+                lo, hi = self._workspace[axis]
+                result[i] = np.clip(result[i], lo, hi)
+        return result
+
     def arm_control(self, cartesian_coords):
         """
         실시간 텔레오퍼레이션 — RBArmOperator에서 60Hz로 호출됨.
@@ -136,6 +162,7 @@ class RBArm(RobotWrapper):
             self._servo_mode = True
 
         tcp_target = _cart_to_tcp(np.asarray(cartesian_coords, dtype=float))
+        tcp_target[:3] = self._clamp_workspace(tcp_target[:3])
         self._robot.move_servo_l(
             self._rc, tcp_target,
             _SERVO_T1, _SERVO_T2, _SERVO_GAIN, _SERVO_ALPHA,
