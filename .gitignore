@@ -27,4 +27,6 @@ urdf/*
 *.mp4
 
 # Logs
-logs/*open_teach.egg-info
+logs/*
+open_teach.egg-info/
+
