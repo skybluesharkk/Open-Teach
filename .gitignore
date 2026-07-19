@@ -30,3 +30,10 @@ urdf/*
 logs/*
 open_teach.egg-info/
 
+
+# Unity 로컬 캐시 (재생성됨 — 커밋 금지)
+VR/*/Library/
+VR/*/Temp/
+VR/*/Logs/
+VR/*/UserSettings/
+VR/*/obj/

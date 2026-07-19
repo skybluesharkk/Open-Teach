@@ -12,6 +12,7 @@ public class NetworkConfiguration
     public string resolutionPortNum;
 
     public string PausePortNum;
+    public string tactilePortNum;
 
     public bool isIPAllocated ()
     {
@@ -72,7 +73,15 @@ public class NetworkManager : MonoBehaviour
             return "tcp://:";
         else
             return "tcp://" + netConfig.IPAddress + ":" + netConfig.PausePortNum;
-        
+
+    }
+
+    public string getTactileAddress()
+    {
+        if (IPNotFound || String.IsNullOrEmpty(netConfig.tactilePortNum))
+            return "tcp://:";
+        else
+            return "tcp://" + netConfig.IPAddress + ":" + netConfig.tactilePortNum;
     }
 
 

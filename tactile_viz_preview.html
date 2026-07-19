@@ -1,0 +1,417 @@
+<title>XHand 택타일 시각화 미리보기</title>
+<style>
+  /* 헤드셋 내부 뷰를 재현하는 다크 단일 테마 — 의도적 선택 */
+  :root {
+    --bg: #0b0f16;
+    --stage: #0e1420;
+    --panel: #131a28;
+    --line: #223048;
+    --ink: #e8edf6;
+    --ink-dim: #8fa0b8;
+    --ink-faint: #55647d;
+    --accent: #45c8ff;
+    --weak: #2666ff;   /* TactileOverlay.cs weakColor */
+    --strong: #ff2619; /* TactileOverlay.cs strongColor */
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, 'Noto Sans KR', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 16px 48px;
+  }
+  header { width: 100%; max-width: 900px; margin-bottom: 18px; }
+  .eyebrow {
+    font-family: ui-monospace, 'Cascadia Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; color: var(--accent);
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-dim); font-size: 13.5px; margin-top: 6px; line-height: 1.6; }
+
+  .tabs {
+    display: flex; gap: 8px; width: 100%; max-width: 900px; margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    flex: 1; min-width: 180px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; cursor: pointer; text-align: left;
+    color: var(--ink-dim); transition: border-color .15s, color .15s;
+  }
+  .tab:hover { border-color: var(--ink-faint); }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tab.active { border-color: var(--accent); color: var(--ink); }
+  .tab .key {
+    font-family: ui-monospace, monospace; font-size: 10px; color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+  .tab .name { display: block; font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .tab .desc { display: block; font-size: 11.5px; margin-top: 2px; color: var(--ink-faint); }
+  .tab.active .desc { color: var(--ink-dim); }
+
+  .stage-wrap { width: 100%; max-width: 900px; position: relative; }
+  canvas {
+    width: 100%; display: block; border-radius: 14px;
+    background: radial-gradient(ellipse at 50% 42%, #131c2e 0%, var(--stage) 62%);
+    border: 1px solid var(--line);
+  }
+  .stage-hud {
+    position: absolute; top: 14px; left: 16px;
+    font-family: ui-monospace, monospace; font-size: 11px; color: var(--ink-faint);
+    letter-spacing: 0.08em; user-select: none;
+  }
+  .controls {
+    position: absolute; top: 12px; right: 12px; display: flex; gap: 6px;
+  }
+  .controls button {
+    background: #0f1522cc; border: 1px solid var(--line); color: var(--ink-dim);
+    border-radius: 8px; padding: 5px 11px; font-size: 12px; cursor: pointer;
+    font-family: inherit;
+  }
+  .controls button:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .bars {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+    width: 100%; max-width: 900px; margin-top: 12px;
+  }
+  .bar-cell {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 12px;
+  }
+  .bar-cell .lbl {
+    font-size: 11px; color: var(--ink-dim); display: flex; justify-content: space-between;
+    font-family: ui-monospace, monospace;
+  }
+  .bar-cell .lbl b { color: var(--ink); font-weight: 600; }
+  .track {
+    height: 5px; background: #0a0e16; border-radius: 3px; margin-top: 7px; overflow: hidden;
+  }
+  .fill { height: 100%; width: 0%; border-radius: 3px; background: var(--weak); }
+
+  .note {
+    width: 100%; max-width: 900px; margin-top: 18px;
+    color: var(--ink-faint); font-size: 12.5px; line-height: 1.7;
+  }
+  .note b { color: var(--ink-dim); font-weight: 600; }
+  @media (max-width: 640px) { .bars { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .bar-cell { padding: 7px 8px; } }
+</style>
+
+<header>
+  <div class="eyebrow">XHand Tactile · Quest Overlay Preview</div>
+  <h1>택타일 시각화 3종 미리보기</h1>
+  <div class="sub">tactile_viz_dummy.py와 동일한 더미 데이터 패턴으로 애니메이션됩니다.
+    Quest에서는 이 손이 실제 트래킹된 내 오른손이고, 시각화가 손끝 본에 붙어 함께 움직입니다.</div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab active" id="tab-f1" role="tab" aria-selected="true">
+    <span class="key">MODE 1</span><span class="name">F1 · 색상 히트맵</span>
+    <span class="desc">힘 크기 스칼라 → 손끝 구체 색 (파랑→빨강)</span>
+  </button>
+  <button class="tab" id="tab-f2a" role="tab" aria-selected="false">
+    <span class="key">MODE 2</span><span class="name">F2A · 손끝 벡터</span>
+    <span class="desc">합산 [Fx,Fy,Fz] → 손끝당 화살표 1개</span>
+  </button>
+  <button class="tab" id="tab-f2b" role="tab" aria-selected="false">
+    <span class="key">MODE 3</span><span class="name">F2B · 분포 벡터장</span>
+    <span class="desc">4×6 그리드 → TactAR식 deformation field</span>
+  </button>
+</div>
+
+<div class="stage-wrap">
+  <canvas id="stage" width="1720" height="1080"></canvas>
+  <div class="stage-hud" id="hud">F1 · HEATMAP</div>
+  <div class="controls">
+    <button id="btn-pause" aria-label="일시정지/재생">⏸ 일시정지</button>
+  </div>
+</div>
+
+<div class="bars" id="bars"></div>
+
+<div class="note">
+  <b>실제 Quest와의 차이</b> — 여기서는 손이 고정된 일러스트지만, 헤드셋에서는 OVRSkeleton이 추적하는
+  실제 손끝 위치(ThumbTip~PinkyTip)에 3D로 붙습니다. 화살표의 방향도 손끝 로컬 좌표 기준이라
+  손을 돌리면 함께 회전합니다. 색상 맵(파랑 #2666ff → 빨강 #ff2619)과 힘→길이 스케일은
+  TactileOverlay.cs 기본값과 동일합니다. 키보드 <b>1 / 2 / 3</b>으로도 모드 전환.
+</div>
+
+<script>
+'use strict';
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ── 더미 데이터 (tactile_viz_dummy.py와 동일한 수식) ─────────────────────
+function fingerIntensity(t, i) {
+  const phase = i * 1.1;
+  const wave  = 0.5 * (1 + Math.sin(t * 1.2 - phase));
+  const pulse = Math.pow(Math.max(0, Math.sin(t * 0.35 - i * 1.3)), 3);
+  return Math.min(1, Math.max(0, 0.55 * wave * pulse + 0.25 * wave));
+}
+function fingerVector(t, i) {
+  const mag = fingerIntensity(t, i) * 5.0;
+  const ang = t * 0.8 + i * 0.7;
+  return { fx: 0.35 * mag * Math.cos(ang), fy: 0.35 * mag * Math.sin(ang * 0.9), fz: mag, mag };
+}
+
+// ── 손 지오메트리 (스크린 좌표, 오른손 손바닥이 보이는 뷰) ────────────────
+// 손끝 5개: 엄지, 검지, 중지, 약지, 소지
+const TIPS = [
+  { x: 480,  y: 640, ang: -2.28, name: '엄지',  w: 66 },
+  { x: 700,  y: 300, ang: -1.71, name: '검지',  w: 58 },
+  { x: 850,  y: 250, ang: -1.57, name: '중지',  w: 58 },
+  { x: 1000, y: 295, ang: -1.43, name: '약지',  w: 54 },
+  { x: 1130, y: 400, ang: -1.22, name: '소지',  w: 48 },
+];
+const KNUCKLES = [
+  { x: 640,  y: 760 }, { x: 740,  y: 560 }, { x: 860,  y: 530 },
+  { x: 985,  y: 555 }, { x: 1090, y: 620 },
+];
+const PALM = [
+  [640, 760], [740, 560], [860, 530], [985, 555], [1090, 620],
+  [1130, 800], [1040, 950], [830, 990], [680, 930],
+];
+
+function lerpColor(k) { // 0→파랑, 1→빨강 (weak→strong)
+  const a = [0x26, 0x66, 0xff], b = [0xff, 0x26, 0x19];
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+function drawHand() {
+  ctx.save();
+  ctx.fillStyle = '#26334d';
+  ctx.strokeStyle = '#3a4c6e';
+  ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.55;
+
+  // 손가락 (관절→손끝 캡슐)
+  for (let i = 0; i < 5; i++) {
+    const k = KNUCKLES[i], tip = TIPS[i];
+    ctx.beginPath();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = tip.w;
+    ctx.strokeStyle = '#26334d';
+    ctx.moveTo(k.x, k.y);
+    // 중간 관절을 둔 약한 곡선
+    const mx = (k.x + tip.x) / 2 + (i === 0 ? -18 : 0);
+    const my = (k.y + tip.y) / 2 + (i === 0 ? 10 : -14);
+    ctx.quadraticCurveTo(mx, my, tip.x, tip.y);
+    ctx.stroke();
+  }
+  // 손바닥
+  ctx.beginPath();
+  ctx.moveTo(PALM[0][0], PALM[0][1]);
+  for (let i = 1; i < PALM.length; i++) ctx.lineTo(PALM[i][0], PALM[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = '#26334d';
+  ctx.fill();
+  // 손목
+  ctx.fillRect(760, 950, 210, 130);
+  ctx.restore();
+
+  // 스켈레톤 라인 (트래킹 느낌)
+  ctx.save();
+  ctx.globalAlpha = 0.4;
+  ctx.strokeStyle = '#5d7396';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) {
+    const k = KNUCKLES[i], tip = TIPS[i];
+    ctx.beginPath();
+    ctx.moveTo(870, 800);
+    ctx.lineTo(k.x, k.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(k.x, k.y, 5, 0, 7); ctx.fillStyle = '#5d7396'; ctx.fill();
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, 5, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// 힘 벡터(손끝 로컬) → 스크린 2D 투영. fz=법선(손끝 방향 바깥), fx/fy=접선
+function projectVec(tip, fx, fy, fz) {
+  const nx = Math.cos(tip.ang), ny = Math.sin(tip.ang);      // 손끝 바깥 방향
+  const txv = -ny, tyv = nx;                                  // 접선
+  return {
+    dx: nx * fz * 0.55 + txv * fx,
+    dy: ny * fz * 0.55 + tyv * fx - fy * 0.35,
+  };
+}
+
+function drawArrow(x0, y0, dx, dy, width, color, alpha = 1) {
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const ux = dx / len, uy = dy / len;
+  const hx = x0 + dx, hy = y0 + dy;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(hx - ux * width * 1.6, hy - uy * width * 1.6);
+  ctx.stroke();
+  // 화살촉
+  const s = width * 2.4;
+  ctx.beginPath();
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(hx - ux * s - uy * s * 0.55, hy - uy * s + ux * s * 0.55);
+  ctx.lineTo(hx - ux * s + uy * s * 0.55, hy - uy * s - ux * s * 0.55);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// ── 모드별 렌더 ────────────────────────────────────────────────────────
+function renderF1(t) {
+  for (let i = 0; i < 5; i++) {
+    const v = fingerIntensity(t, i);
+    if (v < 0.02) continue;
+    const tip = TIPS[i];
+    const r = 26 + v * 16;
+    const g = ctx.createRadialGradient(tip.x, tip.y, 2, tip.x, tip.y, r * 1.9);
+    const c = lerpColor(v);
+    g.addColorStop(0, c);
+    g.addColorStop(0.55, c + '');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.globalAlpha = 0.28 + v * 0.35;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, r * 1.9, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, r * 0.55, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function renderF2A(t) {
+  for (let i = 0; i < 5; i++) {
+    const { fx, fy, fz, mag } = fingerVector(t, i);
+    if (mag < 0.1) continue;
+    const tip = TIPS[i];
+    const p = projectVec(tip, fx, fy, fz);
+    const scale = 30;                       // 1N당 픽셀
+    const k = Math.min(1, mag / 5);
+    drawArrow(tip.x, tip.y, p.dx * scale, p.dy * scale, 9, lerpColor(k));
+    // 시작점 마커
+    ctx.save();
+    ctx.fillStyle = lerpColor(k);
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, 8, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function renderF2B(t) {
+  const ROWS = 4, COLS = 6, SP = 14;
+  for (let i = 0; i < 5; i++) {
+    const tip = TIPS[i];
+    const inten = fingerIntensity(t, i);
+    const mag0 = inten * 5.0;
+    // 접촉 중심 (그리드 좌표 원운동 — 파이썬과 동일)
+    const cr = (ROWS - 1) / 2 + (ROWS / 3) * Math.sin(t * 0.9 + i);
+    const cc = (COLS - 1) / 2 + (COLS / 3) * Math.cos(t * 0.7 + i * 0.5);
+    const ang = t * 0.8 + i * 0.7;
+    // 그리드 축: 손끝 접선/법선 평면
+    const nx = Math.cos(tip.ang), ny = Math.sin(tip.ang);
+    const txv = -ny, tyv = nx;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const d2 = (r - cr) ** 2 + (c - cc) ** 2;
+        const w = Math.exp(-d2 / 3.0);
+        const fzv = mag0 * w;
+        if (fzv < 0.06) continue;
+        const fxv = 0.4 * fzv * Math.cos(ang);
+        const fyv = 0.4 * fzv * Math.sin(ang);
+        const gx = (c - (COLS - 1) / 2) * SP;
+        const gy = (r - (ROWS - 1) / 2) * SP;
+        const px = tip.x + txv * gx + nx * gy * 0.8;
+        const py = tip.y + tyv * gx + ny * gy * 0.8;
+        const p = projectVec(tip, fxv, fyv, fzv);
+        const k = Math.min(1, fzv / 5);
+        drawArrow(px, py, p.dx * 16, p.dy * 16, 3.2, lerpColor(k), 0.95);
+      }
+    }
+  }
+}
+
+// ── UI 상태 ────────────────────────────────────────────────────────────
+const MODES = ['F1', 'F2A', 'F2B'];
+const HUD_TXT = { F1: 'F1 · HEATMAP', F2A: 'F2A · TIP VECTORS', F2B: 'F2B · DEFORMATION FIELD' };
+let mode = 'F1';
+let paused = false;
+let t0 = performance.now();
+let tPaused = 0;
+
+const tabs = { F1: document.getElementById('tab-f1'), F2A: document.getElementById('tab-f2a'), F2B: document.getElementById('tab-f2b') };
+const hud = document.getElementById('hud');
+const btnPause = document.getElementById('btn-pause');
+
+function setMode(m) {
+  mode = m;
+  for (const k of MODES) {
+    tabs[k].classList.toggle('active', k === m);
+    tabs[k].setAttribute('aria-selected', k === m ? 'true' : 'false');
+  }
+  hud.textContent = HUD_TXT[m];
+}
+tabs.F1.onclick = () => setMode('F1');
+tabs.F2A.onclick = () => setMode('F2A');
+tabs.F2B.onclick = () => setMode('F2B');
+document.addEventListener('keydown', e => {
+  if (e.key === '1') setMode('F1');
+  else if (e.key === '2') setMode('F2A');
+  else if (e.key === '3') setMode('F2B');
+  else if (e.key === ' ') { togglePause(); e.preventDefault(); }
+});
+function togglePause() {
+  if (!paused) { tPaused = now(); paused = true; btnPause.textContent = '▶ 재생'; }
+  else { t0 = performance.now() - tPaused * 1000; paused = false; btnPause.textContent = '⏸ 일시정지'; }
+}
+btnPause.onclick = togglePause;
+function now() { return (performance.now() - t0) / 1000; }
+
+// 힘 크기 바
+const FNAMES = ['엄지', '검지', '중지', '약지', '소지'];
+const barsEl = document.getElementById('bars');
+const fills = [], vals = [];
+for (let i = 0; i < 5; i++) {
+  const cell = document.createElement('div');
+  cell.className = 'bar-cell';
+  cell.innerHTML = `<div class="lbl"><b>${FNAMES[i]}</b><span id="v${i}">0.00</span></div>
+                    <div class="track"><div class="fill" id="f${i}"></div></div>`;
+  barsEl.appendChild(cell);
+}
+for (let i = 0; i < 5; i++) { fills.push(document.getElementById('f' + i)); vals.push(document.getElementById('v' + i)); }
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduceMotion) { paused = true; btnPause.textContent = '▶ 재생'; tPaused = 2.4; }
+
+function frame() {
+  const t = paused ? tPaused : now();
+  ctx.clearRect(0, 0, W, H);
+  drawHand();
+  if (mode === 'F1') renderF1(t);
+  else if (mode === 'F2A') renderF2A(t);
+  else renderF2B(t);
+
+  for (let i = 0; i < 5; i++) {
+    const v = fingerIntensity(t, i);
+    fills[i].style.width = (v * 100).toFixed(0) + '%';
+    fills[i].style.background = lerpColor(v);
+    vals[i].textContent = (v * 5).toFixed(2) + ' N';
+  }
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
