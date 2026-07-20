@@ -111,6 +111,8 @@ public class TactileOverlay : MonoBehaviour
     private float lastLogTime = -10f;
     private long lastRecvTicks = 0;        // 마지막 수신 시각 (스레드→메인 하트비트)
     private const double StaleSec = 1.0;   // 이 시간 이상 새 패킷 없으면 시각화 숨김
+    private bool wasTracked = true;        // 상태 전환 로그용
+    private bool wasStale = false;
 
     // ═══════════════════════════════════════════════════════════════════
     //  수신
@@ -653,13 +655,25 @@ public class TactileOverlay : MonoBehaviour
             processedPacket = packet;
         }
 
-        // 트래킹 끊김/화면 밖 → 숨김
-        if (!HandTracked()) { HideAll(""); return; }
+        // 트래킹 끊김/화면 밖 → 숨김 (상태 전환 시 로그)
+        bool tracked = HandTracked();
+        if (tracked != wasTracked)
+        {
+            Debug.Log("[Tactile] 핸드 트래킹 " + (tracked ? "복구" : "손실"));
+            wasTracked = tracked;
+        }
+        if (!tracked) { HideAll(""); return; }
 
         // 수신 하트비트: 1초 이상 새 패킷 없으면 마지막 데이터로 박제하지 않고 숨김
         long lr = Interlocked.Read(ref lastRecvTicks);
-        if (lr == 0 || (DateTime.UtcNow.Ticks - lr) / (double)TimeSpan.TicksPerSecond > StaleSec)
-        { HideAll(""); return; }
+        bool stale = lr == 0 || (DateTime.UtcNow.Ticks - lr) / (double)TimeSpan.TicksPerSecond > StaleSec;
+        if (stale != wasStale)
+        {
+            if (lr != 0)   // 최초 연결 전에는 로그 안 함
+                Debug.Log("[Tactile] 데이터 수신 " + (stale ? "끊김 (1s+ 무패킷)" : "재개"));
+            wasStale = stale;
+        }
+        if (stale) { HideAll(""); return; }
 
         try
         {
