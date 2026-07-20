@@ -4,5 +4,6 @@
   "camPortNum": "10505",
   "graphPortNum": "15001",
   "resolutionPortNum": "8095",
-  "PausePortNum": "8100"
+  "PausePortNum": "8100",
+  "tactilePortNum": "15002"
 }
