@@ -89,7 +89,12 @@ public class TactileOverlay : MonoBehaviour
     private bool f1Valid, f2aValid, f2bValid;
 
     // ── 시각화 오브젝트 ─────────────────────────────────────────────────
-    private GameObject[][] f1Cells; private Material[][] f1Mats; private int f1cR, f1cC;
+    // F1: 손끝을 감싸는 히트 셸(정점 색상 실린더) — 연속 heat blob 렌더
+    private GameObject[] heatShells = new GameObject[NumTips];
+    private Mesh[] heatMeshes = new Mesh[NumTips];
+    private Vector3[] shellVertsLocal;     // 단위 실린더 정점(공유): x=sinφ, y=cosφ, z∈[-0.5,0.5]
+    private Color32[][] shellColors;
+    private const int ShellSegs = 16, ShellRings = 8;
     private GameObject[] tipArrows = new GameObject[NumTips];
     private Transform[] tipShafts = new Transform[NumTips];
     private Material[] tipMats = new Material[NumTips];
@@ -98,8 +103,8 @@ public class TactileOverlay : MonoBehaviour
 
     // ── 점진적 생성(프레임당 조금씩 만들어 스파이크 제거) ──────────────
     public int buildPerFrame = 10;         // 한 프레임에 생성할 오브젝트 수
-    private int f1Built, f2bBuilt;         // 지금까지 생성된 개수
-    private bool f1Building, f2bBuilding;
+    private int f2bBuilt;                  // 지금까지 생성된 개수
+    private bool f2bBuilding;
 
     private static Shader _stdShader;      // Shader.Find 1회 캐싱(성능 함정 회피)
     private Mesh coneMesh;
@@ -293,37 +298,71 @@ public class TactileOverlay : MonoBehaviour
         return root;
     }
 
-    // 크기 바뀌면 배열만 잡고(오브젝트는 null), 실제 생성은 BuildF1이 프레임당 조금씩
-    private void EnsureF1(int rows, int cols)
+    // F1 히트 셸: 손끝당 실린더 메시 1개(정점 ~150개), 정점 색으로 연속 heat blob.
+    // 정점 색 샘플이 '패드 그리드로의 수직 투영'이라 아랫피부/윗피부 대응쌍이 자동으로 같은 색.
+    private void EnsureHeatShells()
     {
-        if (f1Cells != null && rows == f1cR && cols == f1cC) return;
-        if (f1Cells != null)
-            foreach (var set in f1Cells) foreach (var go in set) if (go) Destroy(go);
-        f1cR = rows; f1cC = cols;
-        int n = rows * cols;
-        f1Cells = new GameObject[NumTips][];
-        f1Mats  = new Material[NumTips][];
-        for (int t = 0; t < NumTips; t++) { f1Cells[t] = new GameObject[n]; f1Mats[t] = new Material[n]; }
-        f1Built = 0; f1Building = true;
+        if (heatShells[0] != null) return;
+
+        int vcount = (ShellRings + 1) * (ShellSegs + 1);
+        shellVertsLocal = new Vector3[vcount];
+        var tris = new int[ShellRings * ShellSegs * 6];
+        int vi = 0;
+        for (int r = 0; r <= ShellRings; r++)
+            for (int s = 0; s <= ShellSegs; s++)
+            {
+                float z = r / (float)ShellRings - 0.5f;
+                float phi = s / (float)ShellSegs * Mathf.PI * 2f;
+                shellVertsLocal[vi++] = new Vector3(Mathf.Sin(phi), Mathf.Cos(phi), z);
+            }
+        int ti = 0;
+        for (int r = 0; r < ShellRings; r++)
+            for (int s = 0; s < ShellSegs; s++)
+            {
+                int a = r * (ShellSegs + 1) + s, b = a + ShellSegs + 1;
+                tris[ti++] = a; tris[ti++] = b; tris[ti++] = a + 1;
+                tris[ti++] = a + 1; tris[ti++] = b; tris[ti++] = b + 1;
+            }
+
+        var heatShader = Shader.Find("Tactile/HeatVertex");
+        if (heatShader == null)
+        {
+            RateLog("HeatVertex 셰이더 없음 — Standard로 대체");
+            if (_stdShader == null) _stdShader = Shader.Find("Standard");
+            heatShader = _stdShader;
+        }
+
+        shellColors = new Color32[NumTips][];
+        for (int t = 0; t < NumTips; t++)
+        {
+            var go = new GameObject("TactHeatShell_" + t);
+            var mf = go.AddComponent<MeshFilter>();
+            var mr = go.AddComponent<MeshRenderer>();
+            var mesh = new Mesh { name = "HeatShell" };
+            mesh.vertices = shellVertsLocal;
+            mesh.triangles = tris;
+            shellColors[t] = new Color32[vcount];
+            mesh.colors32 = shellColors[t];
+            mesh.RecalculateBounds();
+            mf.sharedMesh = mesh;
+            mr.sharedMaterial = new Material(heatShader);
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            heatMeshes[t] = mesh;
+            go.SetActive(false);
+            heatShells[t] = go;
+        }
     }
 
-    private void BuildF1()
+    private static float BilinearSample(float[] d, int rows, int cols, float rf, float cf)
     {
-        if (!f1Building) return;
-        int n = f1cR * f1cC, total = NumTips * n, budget = buildPerFrame;
-        while (f1Built < total && budget-- > 0)
-        {
-            int t = f1Built / n, p = f1Built % n;
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Destroy(go.GetComponent<Collider>());
-            go.name = $"TactCell_{t}_{p}";
-            f1Mats[t][p] = MakeMat();
-            go.GetComponent<Renderer>().sharedMaterial = f1Mats[t][p];
-            go.SetActive(false);
-            f1Cells[t][p] = go;
-            f1Built++;
-        }
-        if (f1Built >= total) f1Building = false;
+        rf = Mathf.Clamp(rf, 0, rows - 1); cf = Mathf.Clamp(cf, 0, cols - 1);
+        int r0 = (int)rf, c0 = (int)cf;
+        int r1 = Mathf.Min(r0 + 1, rows - 1), c1 = Mathf.Min(c0 + 1, cols - 1);
+        float fr = rf - r0, fc = cf - c0;
+        float v0 = Mathf.Lerp(d[r0 * cols + c0], d[r0 * cols + c1], fc);
+        float v1 = Mathf.Lerp(d[r1 * cols + c0], d[r1 * cols + c1], fc);
+        return Mathf.Lerp(v0, v1, fr);
     }
 
     private void EnsureF2A()
@@ -371,8 +410,8 @@ public class TactileOverlay : MonoBehaviour
 
     private void HideAll(string except)
     {
-        if (except != "F1" && f1Cells != null)
-            foreach (var set in f1Cells) foreach (var go in set) if (go) go.SetActive(false);
+        if (except != "F1" && heatShells[0] != null)
+            foreach (var go in heatShells) if (go) go.SetActive(false);
         if (except != "F2A" && tipArrows[0] != null)
             foreach (var go in tipArrows) if (go) go.SetActive(false);
         if (except != "F2B" && gridArrows != null)
@@ -457,7 +496,24 @@ public class TactileOverlay : MonoBehaviour
     //  렌더 (매 프레임, 캐시 + 현재 본 위치)
     // ═══════════════════════════════════════════════════════════════════
 
-    private Color ForceColor(float f) => Color.Lerp(weakColor, strongColor, Mathf.Clamp01(f / forceForFullColor));
+    // jet/parula 스타일 컬러맵: 파랑→시안→초록→노랑→주황빨강
+    private static readonly Color[] HeatStops =
+    {
+        new Color(0.09f, 0.22f, 0.66f),
+        new Color(0.00f, 0.62f, 0.95f),
+        new Color(0.13f, 0.79f, 0.35f),
+        new Color(1.00f, 0.86f, 0.10f),
+        new Color(0.98f, 0.30f, 0.05f),
+    };
+    private static Color Colormap(float k)
+    {
+        k = Mathf.Clamp01(k);
+        float f = k * (HeatStops.Length - 1);
+        int i = Mathf.Min((int)f, HeatStops.Length - 2);
+        return Color.Lerp(HeatStops[i], HeatStops[i + 1], f - i);
+    }
+
+    private Color ForceColor(float f) => Colormap(f / forceForFullColor);
 
     private Vector3 ForceToWorldDir(float fx, float fy, float fz)
         => Vector3.right * fx + Vector3.up * fz + Vector3.forward * fy;   // 법선=하늘(+Y)
@@ -474,36 +530,40 @@ public class TactileOverlay : MonoBehaviour
     private void RenderF1()
     {
         if (!f1Valid) return;
-        EnsureF1(f1Rows, f1Cols);
-        BuildF1();
+        EnsureHeatShells();
+        float padLen = Mathf.Max(f1Rows * f1CellSpacing, 0.015f);
+        float radius = fingerRadius + f1SurfaceOffset * 0.5f;
+
         for (int t = 0; t < NumTips; t++)
         {
-            if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out var normal))
-            { foreach (var go in f1Cells[t]) if (go) go.SetActive(false); continue; }
+            var shell = heatShells[t];
+            if (shell == null) continue;
+            if (!PadFrame(t, out var center, out var lengthAxis, out _, out var normal))
+            { shell.SetActive(false); continue; }
 
             float[] d = f1Data[t];
-            for (int r = 0; r < f1Rows; r++)
-                for (int c = 0; c < f1Cols; c++)
-                {
-                    int p = r * f1Cols + c;
-                    var cell = f1Cells[t][p];
-                    if (cell == null) continue;                 // 아직 생성 전
+            float peak = 0f;
+            for (int k = 0; k < d.Length; k++) if (d[k] > peak) peak = d[k];
+            if (peak < scalarThreshold || !Finite(center)) { shell.SetActive(false); continue; }
 
-                    // 손끝 곡면 래핑(F2B와 동일): 세로=길이축, 가로=원통 호
-                    float gy  = (r - (f1Rows - 1) * 0.5f) * f1CellSpacing;
-                    float arc = (c - (f1Cols - 1) * 0.5f) * f1CellSpacing;
-                    float theta = arc / Mathf.Max(fingerRadius, 1e-4f);
-                    float ct = Mathf.Cos(theta), st = Mathf.Sin(theta);
-                    Vector3 nLocal = ct * normal + st * widthAxis;   // 국소 표면 법선
-                    Vector3 pos = center + lengthAxis * gy + (fingerRadius + f1SurfaceOffset) * nLocal;
-                    if (!Finite(pos)) { cell.SetActive(false); continue; }
+            shell.SetActive(true);
+            shell.transform.SetPositionAndRotation(center, Quaternion.LookRotation(lengthAxis, normal));
+            shell.transform.localScale = new Vector3(radius, radius, padLen);
 
-                    // 셀을 곡면에 눕힘: 법선 방향이 셀의 위(+Y)
-                    cell.SetActive(true);
-                    cell.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(lengthAxis, nLocal));
-                    cell.transform.localScale = new Vector3(f1CellSize, 0.0007f, f1CellSize);
-                    SetMatColor(f1Mats[t][p], Color.Lerp(weakColor, strongColor, Mathf.Clamp01(d[p])));
-                }
+            // 정점 색 갱신: 표면점을 패드 그리드에 '수직 투영'해 샘플 (관통 쌍 = 같은 색)
+            // 단위 정점: x=sinφ(횡방향 오프셋), z(길이방향). 윗/아랫피부가 같은 x → 같은 값
+            var cols32 = shellColors[t];
+            for (int v = 0; v < shellVertsLocal.Length; v++)
+            {
+                Vector3 p = shellVertsLocal[v];
+                float rf = (p.z + 0.5f) * (f1Rows - 1);
+                float cf = (p.x * 0.5f + 0.5f) * (f1Cols - 1);
+                float val = BilinearSample(d, f1Rows, f1Cols, rf, cf);
+                Color c = Colormap(val);
+                float a = val < 0.03f ? 0f : Mathf.Clamp01(val * 1.8f) * 0.85f;
+                cols32[v] = new Color(c.r, c.g, c.b, a);
+            }
+            heatMeshes[t].colors32 = cols32;
         }
     }
 
