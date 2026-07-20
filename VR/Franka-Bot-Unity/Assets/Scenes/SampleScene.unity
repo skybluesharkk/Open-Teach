@@ -1640,16 +1640,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   RightHandSkeleton: {fileID: 0}
-  sphereDiameter: 0.018
+  f1CellSize: 0.0032
+  f1CellSpacing: 0.0034
+  f1SurfaceOffset: 0.004
   forceToLength: 0.015
-  maxArrowLength: 0.08
-  shaftWidth: 0.004
-  gridShaftWidth: 0.0015
-  gridSpacing: 0.004
-  gridForceToLength: 0.006
-  weakColor: {r: 0.15, g: 0.4, b: 1, a: 1}
-  strongColor: {r: 1, g: 0.15, b: 0.1, a: 1}
+  maxArrowLength: 0.09
+  shaftWidth: 0.0035
+  headLength: 0.014
+  gridShaftWidth: 0.0011
+  gridHeadLength: 0.005
+  gridSpacing: 0.0024
+  gridForceToLength: 0.008
+  fingerRadius: 0.008
+  weakColor: {r: 0.15, g: 0.45, b: 1, a: 1}
+  strongColor: {r: 1, g: 0.12, b: 0.08, a: 1}
   forceForFullColor: 5
+  forceThreshold: 0.1
+  scalarThreshold: 0.03
+  maxGridPerTip: 96
+  buildPerFrame: 10
 --- !u!1 &256932349
 GameObject:
   m_ObjectHideFlags: 0
