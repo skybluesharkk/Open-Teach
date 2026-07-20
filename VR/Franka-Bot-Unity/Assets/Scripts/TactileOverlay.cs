@@ -104,6 +104,8 @@ public class TactileOverlay : MonoBehaviour
     private static Shader _stdShader;      // Shader.Find 1회 캐싱(성능 함정 회피)
     private Mesh coneMesh;
     private float lastLogTime = -10f;
+    private long lastRecvTicks = 0;        // 마지막 수신 시각 (스레드→메인 하트비트)
+    private const double StaleSec = 1.0;   // 이 시간 이상 새 패킷 없으면 시각화 숨김
 
     // ═══════════════════════════════════════════════════════════════════
     //  수신
@@ -130,10 +132,26 @@ public class TactileOverlay : MonoBehaviour
 
     private void ReceiveLoop()
     {
+        // 예외/일시 단절에도 죽지 않는 수신 루프.
+        // 타임아웃 기반 TryReceive → 스레드가 running 플래그를 항상 확인,
+        // 일시적 예외는 삼키고 계속 (한 번의 예외로 영구 박제되는 버그 방지)
+        var timeout = TimeSpan.FromMilliseconds(200);
         while (running)
         {
-            try { latestPacket = socket.ReceiveFrameString(); }
-            catch (Exception) { break; }
+            try
+            {
+                string msg;
+                if (socket.TryReceiveFrameString(timeout, out msg))
+                {
+                    latestPacket = msg;
+                    Interlocked.Exchange(ref lastRecvTicks, DateTime.UtcNow.Ticks);  // 수신 하트비트
+                }
+            }
+            catch (Exception)
+            {
+                if (!running) break;          // 정상 종료 경로
+                Thread.Sleep(100);            // 일시 예외 → 잠깐 쉬고 재시도
+            }
         }
     }
 
@@ -576,6 +594,11 @@ public class TactileOverlay : MonoBehaviour
 
         // 트래킹 끊김/화면 밖 → 숨김
         if (!HandTracked()) { HideAll(""); return; }
+
+        // 수신 하트비트: 1초 이상 새 패킷 없으면 마지막 데이터로 박제하지 않고 숨김
+        long lr = Interlocked.Read(ref lastRecvTicks);
+        if (lr == 0 || (DateTime.UtcNow.Ticks - lr) / (double)TimeSpan.TicksPerSecond > StaleSec)
+        { HideAll(""); return; }
 
         try
         {
