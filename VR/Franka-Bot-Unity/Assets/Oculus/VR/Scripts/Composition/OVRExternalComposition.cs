@@ -10,9 +10,9 @@ ANY KIND, either express or implied. See the License for the specific language g
 permissions and limitations under the License.
 ************************************************************************************/
 
-#if UNITY_ANDROID && !UNITY_EDITOR
-#define OVR_ANDROID_MRC
-#endif
+// #if UNITY_ANDROID && !UNITY_EDITOR
+// #define OVR_ANDROID_MRC
+// #endif
 
 using System;
 using UnityEngine;
@@ -40,7 +40,7 @@ public class OVRExternalComposition : OVRComposition
 	private bool isFrameSkipped = true;
 	public bool renderCombinedFrame = false;
 	public AudioListener audioListener;
-	public OVRMRAudioFilter audioFilter;
+    public OVRMRAudioFilter audioFilter;
 	public RenderTexture[] mrcRenderTextureArray = new RenderTexture[2];
 	public int frameIndex;
 	public int lastMrcEncodeFrameSyncId;
