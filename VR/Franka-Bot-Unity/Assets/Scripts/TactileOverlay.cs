@@ -96,6 +96,12 @@ public class TactileOverlay : MonoBehaviour
     private GameObject[][] gridArrows; private Transform[][] gridShafts; private Material[][] gridMats;
     private int gridR = 0, gridC = 0;
 
+    // ── 점진적 생성(프레임당 조금씩 만들어 스파이크 제거) ──────────────
+    public int buildPerFrame = 10;         // 한 프레임에 생성할 오브젝트 수
+    private int f1Built, f2bBuilt;         // 지금까지 생성된 개수
+    private bool f1Building, f2bBuilding;
+
+    private static Shader _stdShader;      // Shader.Find 1회 캐싱(성능 함정 회피)
     private Mesh coneMesh;
     private float lastLogTime = -10f;
 
@@ -216,7 +222,8 @@ public class TactileOverlay : MonoBehaviour
 
     private Material MakeMat()
     {
-        var mat = new Material(Shader.Find("Standard"));
+        if (_stdShader == null) _stdShader = Shader.Find("Standard");   // 1회만
+        var mat = new Material(_stdShader);
         mat.EnableKeyword("_EMISSION");
         return mat;
     }
@@ -268,30 +275,37 @@ public class TactileOverlay : MonoBehaviour
         return root;
     }
 
+    // 크기 바뀌면 배열만 잡고(오브젝트는 null), 실제 생성은 BuildF1이 프레임당 조금씩
     private void EnsureF1(int rows, int cols)
     {
         if (f1Cells != null && rows == f1cR && cols == f1cC) return;
         if (f1Cells != null)
-            foreach (var set in f1Cells) foreach (var go in set) Destroy(go);
+            foreach (var set in f1Cells) foreach (var go in set) if (go) Destroy(go);
         f1cR = rows; f1cC = cols;
         int n = rows * cols;
         f1Cells = new GameObject[NumTips][];
-        f1Mats = new Material[NumTips][];
-        for (int t = 0; t < NumTips; t++)
+        f1Mats  = new Material[NumTips][];
+        for (int t = 0; t < NumTips; t++) { f1Cells[t] = new GameObject[n]; f1Mats[t] = new Material[n]; }
+        f1Built = 0; f1Building = true;
+    }
+
+    private void BuildF1()
+    {
+        if (!f1Building) return;
+        int n = f1cR * f1cC, total = NumTips * n, budget = buildPerFrame;
+        while (f1Built < total && budget-- > 0)
         {
-            f1Cells[t] = new GameObject[n];
-            f1Mats[t] = new Material[n];
-            for (int p = 0; p < n; p++)
-            {
-                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Destroy(go.GetComponent<Collider>());
-                go.name = $"TactCell_{t}_{p}";
-                f1Mats[t][p] = MakeMat();
-                go.GetComponent<Renderer>().sharedMaterial = f1Mats[t][p];
-                go.SetActive(false);
-                f1Cells[t][p] = go;
-            }
+            int t = f1Built / n, p = f1Built % n;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Destroy(go.GetComponent<Collider>());
+            go.name = $"TactCell_{t}_{p}";
+            f1Mats[t][p] = MakeMat();
+            go.GetComponent<Renderer>().sharedMaterial = f1Mats[t][p];
+            go.SetActive(false);
+            f1Cells[t][p] = go;
+            f1Built++;
         }
+        if (f1Built >= total) f1Building = false;
     }
 
     private void EnsureF2A()
@@ -308,33 +322,43 @@ public class TactileOverlay : MonoBehaviour
     {
         if (gridArrows != null && rows == gridR && cols == gridC) return;
         if (gridArrows != null)
-            foreach (var set in gridArrows) foreach (var go in set) Destroy(go);
+            foreach (var set in gridArrows) foreach (var go in set) if (go) Destroy(go);
         gridR = rows; gridC = cols;
         int n = rows * cols;
         gridArrows = new GameObject[NumTips][];
         gridShafts = new Transform[NumTips][];
-        gridMats = new Material[NumTips][];
+        gridMats   = new Material[NumTips][];
         for (int t = 0; t < NumTips; t++)
         {
             gridArrows[t] = new GameObject[n];
             gridShafts[t] = new Transform[n];
-            gridMats[t] = new Material[n];
-            for (int p = 0; p < n; p++)
-            {
-                gridArrows[t][p] = MakeArrow(gridShaftWidth, gridHeadLength,
-                    out gridShafts[t][p], out gridMats[t][p]);
-            }
+            gridMats[t]   = new Material[n];
         }
+        f2bBuilt = 0; f2bBuilding = true;
+    }
+
+    private void BuildF2B()
+    {
+        if (!f2bBuilding) return;
+        int n = gridR * gridC, total = NumTips * n, budget = buildPerFrame;
+        while (f2bBuilt < total && budget-- > 0)
+        {
+            int t = f2bBuilt / n, p = f2bBuilt % n;
+            gridArrows[t][p] = MakeArrow(gridShaftWidth, gridHeadLength,
+                out gridShafts[t][p], out gridMats[t][p]);
+            f2bBuilt++;
+        }
+        if (f2bBuilt >= total) f2bBuilding = false;
     }
 
     private void HideAll(string except)
     {
         if (except != "F1" && f1Cells != null)
-            foreach (var set in f1Cells) foreach (var go in set) go.SetActive(false);
+            foreach (var set in f1Cells) foreach (var go in set) if (go) go.SetActive(false);
         if (except != "F2A" && tipArrows[0] != null)
-            foreach (var go in tipArrows) go.SetActive(false);
+            foreach (var go in tipArrows) if (go) go.SetActive(false);
         if (except != "F2B" && gridArrows != null)
-            foreach (var set in gridArrows) foreach (var go in set) go.SetActive(false);
+            foreach (var set in gridArrows) foreach (var go in set) if (go) go.SetActive(false);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -433,25 +457,32 @@ public class TactileOverlay : MonoBehaviour
     {
         if (!f1Valid) return;
         EnsureF1(f1Rows, f1Cols);
+        BuildF1();
         for (int t = 0; t < NumTips; t++)
         {
             if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out var normal))
-            { foreach (var go in f1Cells[t]) go.SetActive(false); continue; }
+            { foreach (var go in f1Cells[t]) if (go) go.SetActive(false); continue; }
 
-            Quaternion rot = Quaternion.LookRotation(lengthAxis, normal);
-            Vector3 basePos = center + normal * f1SurfaceOffset;
             float[] d = f1Data[t];
             for (int r = 0; r < f1Rows; r++)
                 for (int c = 0; c < f1Cols; c++)
                 {
                     int p = r * f1Cols + c;
                     var cell = f1Cells[t][p];
-                    float gx = (c - (f1Cols - 1) * 0.5f) * f1CellSpacing;
-                    float gy = (r - (f1Rows - 1) * 0.5f) * f1CellSpacing;
-                    Vector3 pos = basePos + widthAxis * gx + lengthAxis * gy;
+                    if (cell == null) continue;                 // 아직 생성 전
+
+                    // 손끝 곡면 래핑(F2B와 동일): 세로=길이축, 가로=원통 호
+                    float gy  = (r - (f1Rows - 1) * 0.5f) * f1CellSpacing;
+                    float arc = (c - (f1Cols - 1) * 0.5f) * f1CellSpacing;
+                    float theta = arc / Mathf.Max(fingerRadius, 1e-4f);
+                    float ct = Mathf.Cos(theta), st = Mathf.Sin(theta);
+                    Vector3 nLocal = ct * normal + st * widthAxis;   // 국소 표면 법선
+                    Vector3 pos = center + lengthAxis * gy + (fingerRadius + f1SurfaceOffset) * nLocal;
                     if (!Finite(pos)) { cell.SetActive(false); continue; }
+
+                    // 셀을 곡면에 눕힘: 법선 방향이 셀의 위(+Y)
                     cell.SetActive(true);
-                    cell.transform.SetPositionAndRotation(pos, rot);
+                    cell.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(lengthAxis, nLocal));
                     cell.transform.localScale = new Vector3(f1CellSize, 0.0007f, f1CellSize);
                     SetMatColor(f1Mats[t][p], Color.Lerp(weakColor, strongColor, Mathf.Clamp01(d[p])));
                 }
@@ -482,10 +513,11 @@ public class TactileOverlay : MonoBehaviour
     {
         if (!f2bValid) return;
         EnsureF2B(f2bRows, f2bCols);
+        BuildF2B();
         for (int t = 0; t < NumTips; t++)
         {
             if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out var normal))
-            { foreach (var go in gridArrows[t]) go.SetActive(false); continue; }
+            { foreach (var go in gridArrows[t]) if (go) go.SetActive(false); continue; }
 
             float[] d = f2bData[t];
             for (int r = 0; r < f2bRows; r++)
@@ -493,6 +525,7 @@ public class TactileOverlay : MonoBehaviour
                 {
                     int p = r * f2bCols + c, o = p * 3;
                     var arrow = gridArrows[t][p];
+                    if (arrow == null) continue;                // 아직 생성 전
                     float fx = d[o], fy = d[o + 1], fz = d[o + 2];
                     float mag = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
                     if (mag < forceThreshold * 0.5f) { arrow.SetActive(false); continue; }
