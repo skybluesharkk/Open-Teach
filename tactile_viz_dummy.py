@@ -11,7 +11,7 @@ XHand 택타일 센서 시각화 — 더미 데이터 퍼블리셔
     F2B : 손끝당 NxM 그리드 벡터장 → TactAR식 deformation field
 
 패킷 형식 (UTF-8 텍스트, ZMQ PUB, 프레임 1개):
-    F1:t,i,m,r,p                          — 손끝 5개 스칼라 (0~1)
+    F1:rows,cols;v,v,...|v,v,...          — 손끝 5개 × (rows*cols) 택셀 스칼라(0~1)
     F2A:fx,fy,fz|fx,fy,fz|...             — 손끝 5개 벡터 (N, 손끝 로컬 좌표)
     F2B:rows,cols;v,v,v|v,v,v|...         — 손끝 5개 × (rows*cols) 벡터
                                             (손끝 순서: 엄지,검지,중지,약지,소지 연속)
@@ -75,12 +75,29 @@ def finger_vector(t, idx):
     return fx, fy, fz
 
 
+def _contact_center(t, idx, rows, cols):
+    """시간에 따라 그리드 위를 이동하는 접촉 중심 (r, c)."""
+    cr = (rows - 1) / 2 + (rows / 3) * math.sin(t * 0.9 + idx)
+    cc = (cols - 1) / 2 + (cols / 3) * math.cos(t * 0.7 + idx * 0.5)
+    return cr, cc
+
+
+def finger_grid_scalar(t, idx, rows, cols):
+    """손끝 idx의 택셀별 힘 크기 (0~1). 접촉 중심 가우시안 분포."""
+    peak = finger_intensity(t, idx)          # 0~1
+    cr, cc = _contact_center(t, idx, rows, cols)
+    out = []
+    for r in range(rows):
+        for c in range(cols):
+            d2 = (r - cr) ** 2 + (c - cc) ** 2
+            out.append(min(1.0, peak * math.exp(-d2 / 3.0)))
+    return out
+
+
 def finger_grid(t, idx, rows, cols):
     """손끝 idx의 그리드 벡터장. 접촉 중심이 그리드 위를 이동하는 가우시안."""
     mag = finger_intensity(t, idx) * 5.0
-    # 접촉 중심 (그리드 좌표, 시간에 따라 원운동)
-    cr = (rows - 1) / 2 + (rows / 3) * math.sin(t * 0.9 + idx)
-    cc = (cols - 1) / 2 + (cols / 3) * math.cos(t * 0.7 + idx * 0.5)
+    cr, cc = _contact_center(t, idx, rows, cols)
     ang = t * 0.8 + idx * 0.7
     out = []
     for r in range(rows):
@@ -97,8 +114,12 @@ def finger_grid(t, idx, rows, cols):
 # ── 패킷 직렬화 ─────────────────────────────────────────────────────────────
 
 def packet_f1(t):
-    vals = [f"{finger_intensity(t, i):.3f}" for i in range(5)]
-    return "F1:" + ",".join(vals)
+    # 손끝당 택셀 그리드 스칼라 (F2B와 같은 rows,cols; 구조, 값은 스칼라)
+    tips = []
+    for i in range(5):
+        grid = finger_grid_scalar(t, i, GRID_ROWS, GRID_COLS)
+        tips.append(",".join(f"{v:.3f}" for v in grid))
+    return f"F1:{GRID_ROWS},{GRID_COLS};" + "|".join(tips)
 
 
 def packet_f2a(t):

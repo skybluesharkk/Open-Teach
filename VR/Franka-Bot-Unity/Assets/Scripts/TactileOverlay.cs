@@ -10,56 +10,51 @@ using NetMQ.Sockets;
 /// <summary>
 /// XHand 택타일 센서값을 트래킹된 오른손 손가락 위에 시각화.
 ///
-/// PC의 tactile_viz_dummy.py(또는 실센서 퍼블리셔)가 보내는 텍스트 패킷을
-/// NetMQ SUB로 수신해, 패킷 prefix에 따라 세 가지 모드로 렌더링한다:
-///   F1  : 손끝 마디 표면 색상 — 파랑(약함)→빨강(강함), 센서 존재 부위를 덮음
-///   F2A : 손끝당 힘 벡터 화살표 1개 — 손가락에서 하늘로 솟는 화살표
-///   F2B : 손끝당 rows x cols 벡터장 — 손끝 패드 중심의 deformation field
+/// 패킷(텍스트, NetMQ SUB):
+///   F1:rows,cols;v,..|v,..     손끝 5개 × 택셀 스칼라(0~1)  → 택셀별 색상 히트맵
+///   F2A:fx,fy,fz|...           손끝 5개 합산 벡터           → 하늘로 솟는 화살표 5개
+///   F2B:rows,cols;vx,vy,vz,..  손끝 5개 × 택셀 벡터          → 패드 중심 deformation field
 ///
-/// 좌표계 가정(사용자 시나리오): 손등이 하늘, 손바닥이 지면.
-/// 힘 화살표는 손가락에서 '하늘(world +Y)' 방향으로 솟는다.
-///
-/// 앵커: OVRSkeleton 오른손 손끝/말단 본.
-/// 씬 설정: 빈 GameObject에 붙이고 RightHandSkeleton 할당(미할당 시 자동 탐색).
-///
-/// 안정성: 트래킹 유효성 검사 + NaN 방어 + try/catch 로 손이 화면 밖으로
-/// 나가거나 트래킹이 끊겨도 앱이 얼지 않는다(그냥 숨김 처리).
+/// 성능/안정성 핵심:
+///  - 패킷은 바뀔 때만 파싱해 float 캐시에 저장(매 프레임 문자열 Split 금지 → GC 폭주 방지).
+///  - 매 프레임엔 캐시 + 현재 본 위치로 오브젝트 위치만 갱신.
+///  - 트래킹 유효성 검사 + NaN 방어 + try/catch(로그 레이트리밋)로 앱 멈춤 방지.
+///  - OnApplicationPause 시 소켓/스레드 정리 후 재개.
 /// </summary>
 public class TactileOverlay : MonoBehaviour
 {
     public OVRSkeleton RightHandSkeleton;
 
-    [Header("F1 표면 히트")]
-    public float padThickness = 0.011f;    // 손끝 마디 덮개 두께/지름 (m)
+    [Header("F1 택셀 히트맵")]
+    public float f1CellSize = 0.0032f;     // 택셀 셀 한 변 (m)
+    public float f1CellSpacing = 0.0034f;  // 택셀 간격 (m)
+    public float f1SurfaceOffset = 0.004f; // 손가락 표면에서 띄우는 높이 (m)
 
     [Header("F2 화살표")]
-    public float forceToLength = 0.015f;   // 1N 당 화살표 길이 (m)
-    public float maxArrowLength = 0.09f;   // 화살표 최대 길이 (m)
-    public float shaftWidth = 0.0035f;     // F2A 축 두께 (m)
-    public float headLength = 0.014f;      // F2A 화살촉 길이 (m)
-    public float gridShaftWidth = 0.0014f; // F2B 축 두께 (m)
-    public float gridHeadLength = 0.006f;  // F2B 화살촉 길이 (m)
-    public float gridSpacing = 0.003f;     // F2B 그리드 간격 (m)
-    public float gridForceToLength = 0.008f; // F2B 1N 당 길이 (m)
+    public float forceToLength = 0.015f;
+    public float maxArrowLength = 0.09f;
+    public float shaftWidth = 0.0035f;
+    public float headLength = 0.014f;
+    public float gridShaftWidth = 0.0014f;
+    public float gridHeadLength = 0.006f;
+    public float gridSpacing = 0.003f;
+    public float gridForceToLength = 0.008f;
 
     [Header("색상")]
-    public Color weakColor = new Color(0.15f, 0.45f, 1f);   // 파랑
-    public Color strongColor = new Color(1f, 0.12f, 0.08f); // 빨강
-    public float forceForFullColor = 5f;   // 이 힘(N)에서 완전 빨강
+    public Color weakColor = new Color(0.15f, 0.45f, 1f);
+    public Color strongColor = new Color(1f, 0.12f, 0.08f);
+    public float forceForFullColor = 5f;
 
     [Header("임계값")]
-    public float scalarThreshold = 0.02f;  // F1 이하이면 숨김 (0~1)
     public float forceThreshold = 0.1f;    // F2 이하이면 숨김 (N)
-    public int maxGridPerTip = 64;         // F2B 손끝당 최대 점 개수(폭주 방지)
+    public int maxGridPerTip = 96;         // 손끝당 택셀 상한(폭주 방지)
 
-    // 손끝 tip 본 — 엄지,검지,중지,약지,소지
     private static readonly OVRSkeleton.BoneId[] TipBoneIds =
     {
         OVRSkeleton.BoneId.Hand_ThumbTip,  OVRSkeleton.BoneId.Hand_IndexTip,
         OVRSkeleton.BoneId.Hand_MiddleTip, OVRSkeleton.BoneId.Hand_RingTip,
         OVRSkeleton.BoneId.Hand_PinkyTip,
     };
-    // 손끝 말단(distal) 본 — 패드 중심 계산용
     private static readonly OVRSkeleton.BoneId[] DistalBoneIds =
     {
         OVRSkeleton.BoneId.Hand_Thumb3,  OVRSkeleton.BoneId.Hand_Index3,
@@ -82,42 +77,43 @@ public class TactileOverlay : MonoBehaviour
     private Transform[] distalBones = new Transform[NumTips];
     private bool bonesReady = false;
 
+    // ── 파싱 캐시(패킷 바뀔 때만 갱신) ──────────────────────────────────
+    private string processedPacket = null;
+    private string curMode = "";
+    private int f1Rows, f1Cols;
+    private float[][] f1Data;              // [tip][rows*cols] 스칼라
+    private float[][] f2aData;             // [tip][3]
+    private int f2bRows, f2bCols;
+    private float[][] f2bData;             // [tip][rows*cols*3]
+    private bool f1Valid, f2aValid, f2bValid;
+
     // ── 시각화 오브젝트 ─────────────────────────────────────────────────
-    private GameObject[] padCaps = new GameObject[NumTips];        // F1
-    private Material[] padMats = new Material[NumTips];
-    private GameObject[] tipArrows = new GameObject[NumTips];      // F2A
+    private GameObject[][] f1Cells; private Material[][] f1Mats; private int f1cR, f1cC;
+    private GameObject[] tipArrows = new GameObject[NumTips];
     private Transform[] tipShafts = new Transform[NumTips];
     private Material[] tipMats = new Material[NumTips];
-    private GameObject[][] gridArrows;                             // F2B
-    private Transform[][] gridShafts;
-    private Material[][] gridMats;
-    private int gridRows = 0, gridCols = 0;
+    private GameObject[][] gridArrows; private Transform[][] gridShafts; private Material[][] gridMats;
+    private int gridR = 0, gridC = 0;
 
-    private Mesh coneMesh;   // 화살촉 공유 메시
-    private string currentMode = "";
+    private Mesh coneMesh;
+    private float lastLogTime = -10f;
 
     // ═══════════════════════════════════════════════════════════════════
-    //  수신 스레드
+    //  수신
     // ═══════════════════════════════════════════════════════════════════
 
     private void StartReceiverThread()
     {
         communicationAddress = netConfig.getTactileAddress();
-        if (String.Equals(communicationAddress, "tcp://:"))
-            return;
-
+        if (String.Equals(communicationAddress, "tcp://:")) return;
         try
         {
             socket = new SubscriberSocket();
-            socket.Options.ReceiveHighWatermark = 5;
+            socket.Options.ReceiveHighWatermark = 2;
             socket.Connect(communicationAddress);
             socket.Subscribe("");
         }
-        catch (Exception e)
-        {
-            Debug.LogWarning("[Tactile] 소켓 연결 실패: " + e.Message);
-            return;
-        }
+        catch (Exception e) { Debug.LogWarning("[Tactile] 소켓 실패: " + e.Message); return; }
 
         connectionEstablished = true;
         running = true;
@@ -129,34 +125,35 @@ public class TactileOverlay : MonoBehaviour
     {
         while (running)
         {
-            try
-            {
-                string packet = socket.ReceiveFrameString();
-                latestPacket = packet;   // 최신 패킷만 유지
-            }
-            catch (Exception)
-            {
-                break;   // 소켓 닫힘 등 → 스레드 종료
-            }
+            try { latestPacket = socket.ReceiveFrameString(); }
+            catch (Exception) { break; }
         }
+    }
+
+    private void StopReceiver()
+    {
+        running = false;
+        try { if (socket != null) { socket.Close(); socket = null; } } catch { }
+        connectionEstablished = false;
+        processedPacket = null;
     }
 
     void Start()
     {
-        GameObject netConfGame = GameObject.Find("NetworkConfigsLoader");
-        if (netConfGame != null)
-            netConfig = netConfGame.GetComponent<NetworkManager>();
+        var g = GameObject.Find("NetworkConfigsLoader");
+        if (g != null) netConfig = g.GetComponent<NetworkManager>();
         coneMesh = BuildConeMesh(12);
     }
 
-    void OnDestroy()
+    void OnApplicationPause(bool paused)
     {
-        running = false;
-        try { if (socket != null) socket.Close(); } catch { }
+        if (paused) StopReceiver();   // 재개 시 Update가 다시 연결
     }
 
+    void OnDestroy() { StopReceiver(); }
+
     // ═══════════════════════════════════════════════════════════════════
-    //  본 탐색
+    //  본
     // ═══════════════════════════════════════════════════════════════════
 
     private bool TryResolveBones()
@@ -168,25 +165,21 @@ public class TactileOverlay : MonoBehaviour
                 { RightHandSkeleton = sk; break; }
             if (RightHandSkeleton == null) return false;
         }
-        if (RightHandSkeleton.Bones == null || RightHandSkeleton.Bones.Count == 0)
-            return false;
+        if (RightHandSkeleton.Bones == null || RightHandSkeleton.Bones.Count == 0) return false;
 
         int found = 0;
         foreach (var bone in RightHandSkeleton.Bones)
-        {
             for (int i = 0; i < NumTips; i++)
             {
                 if (bone.Id == TipBoneIds[i])    { tipBones[i] = bone.Transform; found++; }
                 if (bone.Id == DistalBoneIds[i]) { distalBones[i] = bone.Transform; }
             }
-        }
         return found == NumTips;
     }
 
     private bool HandTracked()
     {
-        return RightHandSkeleton != null
-            && RightHandSkeleton.IsInitialized
+        return RightHandSkeleton != null && RightHandSkeleton.IsInitialized
             && RightHandSkeleton.IsDataValid;
     }
 
@@ -196,8 +189,28 @@ public class TactileOverlay : MonoBehaviour
               || float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
     }
 
+    /// <summary>손끝 패드 좌표계: 중심=(tip+distal)/2, 길이축, 폭축, 법선.</summary>
+    private bool PadFrame(int i, out Vector3 center, out Vector3 lengthAxis,
+                          out Vector3 widthAxis, out Vector3 normal)
+    {
+        center = lengthAxis = widthAxis = normal = Vector3.zero;
+        if (tipBones[i] == null || distalBones[i] == null) return false;
+        Vector3 tip = tipBones[i].position, dist = distalBones[i].position;
+        if (!Finite(tip) || !Finite(dist)) return false;
+
+        center = (tip + dist) * 0.5f;
+        lengthAxis = tip - dist;
+        if (lengthAxis.sqrMagnitude < 1e-8f) lengthAxis = Vector3.forward;
+        lengthAxis.Normalize();
+        widthAxis = Vector3.Cross(lengthAxis, Vector3.up);
+        if (widthAxis.sqrMagnitude < 1e-6f) widthAxis = Vector3.right;
+        widthAxis.Normalize();
+        normal = Vector3.Cross(widthAxis, lengthAxis).normalized;
+        return true;
+    }
+
     // ═══════════════════════════════════════════════════════════════════
-    //  프리미티브 생성
+    //  프리미티브
     // ═══════════════════════════════════════════════════════════════════
 
     private Material MakeMat()
@@ -206,20 +219,17 @@ public class TactileOverlay : MonoBehaviour
         mat.EnableKeyword("_EMISSION");
         return mat;
     }
-
     private void SetMatColor(Material mat, Color c)
     {
         mat.color = c;
         mat.SetColor("_EmissionColor", c * 0.7f);
     }
 
-    /// <summary>화살촉 원뿔 메시. apex(0,0,0) → base(0,height,1) 반경 0.5.</summary>
     private Mesh BuildConeMesh(int seg)
     {
         var mesh = new Mesh { name = "TactCone" };
         var verts = new Vector3[seg + 2];
-        verts[0] = Vector3.zero;                 // apex (아래, 손가락쪽)
-        verts[1] = new Vector3(0, 1, 0);         // base center
+        verts[0] = Vector3.zero; verts[1] = new Vector3(0, 1, 0);
         for (int i = 0; i < seg; i++)
         {
             float a = (i / (float)seg) * Mathf.PI * 2f;
@@ -229,56 +239,57 @@ public class TactileOverlay : MonoBehaviour
         for (int i = 0; i < seg; i++)
         {
             int a = 2 + i, b = 2 + (i + 1) % seg;
-            tris.Add(0); tris.Add(b); tris.Add(a);   // 옆면
-            tris.Add(1); tris.Add(a); tris.Add(b);   // 밑면
+            tris.Add(0); tris.Add(b); tris.Add(a);
+            tris.Add(1); tris.Add(a); tris.Add(b);
         }
-        mesh.vertices = verts;
-        mesh.triangles = tris.ToArray();
+        mesh.vertices = verts; mesh.triangles = tris.ToArray();
         mesh.RecalculateNormals();
         return mesh;
     }
 
-    /// <summary>
-    /// 화살표: 손가락쪽(y=0)에 화살촉(apex 아래) + 위로 뻗는 축.
-    /// 축 길이는 매 프레임 조절, 화살촉 크기는 고정.
-    /// </summary>
     private GameObject MakeArrow(float width, float headLen, out Transform shaft, out Material mat)
     {
         var root = new GameObject("TactArrow");
         mat = MakeMat();
-
         var head = new GameObject("head");
         head.transform.SetParent(root.transform, false);
         head.AddComponent<MeshFilter>().sharedMesh = coneMesh;
         head.AddComponent<MeshRenderer>().sharedMaterial = mat;
         head.transform.localScale = new Vector3(width * 2.4f, headLen, width * 2.4f);
-        head.transform.localPosition = Vector3.zero;   // apex가 손가락 접점
-
         var shaftGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         Destroy(shaftGo.GetComponent<Collider>());
         shaftGo.transform.SetParent(root.transform, false);
         shaftGo.GetComponent<Renderer>().sharedMaterial = mat;
-        // 기본 실린더는 높이2(±1). 아래에서 PlaceArrow가 scale.y/pos.y 설정
         shaftGo.transform.localScale = new Vector3(width, 0.01f, width);
         shaftGo.transform.localPosition = new Vector3(0, headLen, 0);
-
         shaft = shaftGo.transform;
         root.SetActive(false);
         return root;
     }
 
-    private void EnsureF1()
+    private void EnsureF1(int rows, int cols)
     {
-        if (padCaps[0] != null) return;
-        for (int i = 0; i < NumTips; i++)
+        if (f1Cells != null && rows == f1cR && cols == f1cC) return;
+        if (f1Cells != null)
+            foreach (var set in f1Cells) foreach (var go in set) Destroy(go);
+        f1cR = rows; f1cC = cols;
+        int n = rows * cols;
+        f1Cells = new GameObject[NumTips][];
+        f1Mats = new Material[NumTips][];
+        for (int t = 0; t < NumTips; t++)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            Destroy(go.GetComponent<Collider>());
-            go.name = "TactPad_" + i;
-            padMats[i] = MakeMat();
-            go.GetComponent<Renderer>().sharedMaterial = padMats[i];
-            go.SetActive(false);
-            padCaps[i] = go;
+            f1Cells[t] = new GameObject[n];
+            f1Mats[t] = new Material[n];
+            for (int p = 0; p < n; p++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Destroy(go.GetComponent<Collider>());
+                go.name = $"TactCell_{t}_{p}";
+                f1Mats[t][p] = MakeMat();
+                go.GetComponent<Renderer>().sharedMaterial = f1Mats[t][p];
+                go.SetActive(false);
+                f1Cells[t][p] = go;
+            }
         }
     }
 
@@ -294,13 +305,10 @@ public class TactileOverlay : MonoBehaviour
 
     private void EnsureF2B(int rows, int cols)
     {
-        if (gridArrows != null && rows == gridRows && cols == gridCols) return;
-
+        if (gridArrows != null && rows == gridR && cols == gridC) return;
         if (gridArrows != null)
-            foreach (var set in gridArrows)
-                foreach (var go in set) Destroy(go);
-
-        gridRows = rows; gridCols = cols;
+            foreach (var set in gridArrows) foreach (var go in set) Destroy(go);
+        gridR = rows; gridC = cols;
         int n = rows * cols;
         gridArrows = new GameObject[NumTips][];
         gridShafts = new Transform[NumTips][];
@@ -314,49 +322,23 @@ public class TactileOverlay : MonoBehaviour
             {
                 gridArrows[t][p] = MakeArrow(gridShaftWidth, gridHeadLength,
                     out gridShafts[t][p], out gridMats[t][p]);
-                gridArrows[t][p].name = $"TactGrid_{t}_{p}";
-                gridMats[t][p] = gridArrows[t][p].GetComponentInChildren<Renderer>().sharedMaterial;
             }
         }
     }
 
     private void HideAll(string except)
     {
-        if (except != "F1" && padCaps[0] != null)
-            foreach (var go in padCaps) go.SetActive(false);
+        if (except != "F1" && f1Cells != null)
+            foreach (var set in f1Cells) foreach (var go in set) go.SetActive(false);
         if (except != "F2A" && tipArrows[0] != null)
             foreach (var go in tipArrows) go.SetActive(false);
         if (except != "F2B" && gridArrows != null)
-            foreach (var set in gridArrows)
-                foreach (var go in set) go.SetActive(false);
+            foreach (var set in gridArrows) foreach (var go in set) go.SetActive(false);
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    //  렌더링 헬퍼
+    //  파싱 (패킷 바뀔 때 1회)
     // ═══════════════════════════════════════════════════════════════════
-
-    private Color ForceColor(float f)
-    {
-        return Color.Lerp(weakColor, strongColor, Mathf.Clamp01(f / forceForFullColor));
-    }
-
-    /// <summary>손끝 로컬 힘(fx 접선, fy 접선, fz 법선) → world 방향. 법선=하늘(+Y).</summary>
-    private Vector3 ForceToWorldDir(float fx, float fy, float fz)
-    {
-        // 시나리오: 손등이 하늘. 누르는 반력은 하늘로 솟음.
-        return (Vector3.right * fx + Vector3.up * fz + Vector3.forward * fy);
-    }
-
-    /// <summary>화살표 배치: 손가락에서 dir 방향으로 length 만큼.</summary>
-    private void PlaceArrow(Transform root, Transform shaft, float headLen,
-                            Vector3 start, Vector3 dir, float length, float width)
-    {
-        root.position = start;
-        root.rotation = Quaternion.FromToRotation(Vector3.up, dir.normalized);
-        // 축: headLen 위에서 length 만큼 (실린더 기본 높이 2 → scale.y = length/2)
-        shaft.localScale = new Vector3(width, length * 0.5f, width);
-        shaft.localPosition = new Vector3(0, headLen + length * 0.5f, 0);
-    }
 
     private static float ParseF(string s)
     {
@@ -364,55 +346,130 @@ public class TactileOverlay : MonoBehaviour
         return v;
     }
 
-    // ── F1: 손끝 마디 표면 히트 ─────────────────────────────────────────
-    private void RenderF1(string payload)
+    private void ParsePacket(string packet)
     {
-        EnsureF1();
-        string[] vals = payload.Split(',');
+        f1Valid = f2aValid = f2bValid = false;
+        int colon = packet.IndexOf(':');
+        if (colon < 0) return;
+        string mode = packet.Substring(0, colon);
+        string payload = packet.Substring(colon + 1);
+
+        if (mode != curMode) { HideAll(mode); curMode = mode; }
+
+        if (mode == "F1")       ParseGrid(payload, 1, ref f1Rows, ref f1Cols, ref f1Data, ref f1Valid);
+        else if (mode == "F2B") ParseGrid(payload, 3, ref f2bRows, ref f2bCols, ref f2bData, ref f2bValid);
+        else if (mode == "F2A") ParseF2A(payload);
+    }
+
+    private void ParseF2A(string payload)
+    {
+        string[] vecs = payload.Split('|');
+        if (f2aData == null) f2aData = new float[NumTips][];
         for (int i = 0; i < NumTips; i++)
         {
-            if (i >= vals.Length || tipBones[i] == null || distalBones[i] == null)
-            { padCaps[i].SetActive(false); continue; }
+            if (f2aData[i] == null) f2aData[i] = new float[3];
+            if (i < vecs.Length)
+            {
+                string[] c = vecs[i].Split(',');
+                f2aData[i][0] = c.Length > 0 ? ParseF(c[0]) : 0;
+                f2aData[i][1] = c.Length > 1 ? ParseF(c[1]) : 0;
+                f2aData[i][2] = c.Length > 2 ? ParseF(c[2]) : 0;
+            }
+            else { f2aData[i][0] = f2aData[i][1] = f2aData[i][2] = 0; }
+        }
+        f2aValid = true;
+    }
 
-            float v = ParseF(vals[i]);
-            Vector3 tip = tipBones[i].position, dist = distalBones[i].position;
-            if (v < scalarThreshold || !Finite(tip) || !Finite(dist))
-            { padCaps[i].SetActive(false); continue; }
+    /// <summary>"rows,cols;tip|tip.." → data[tip][rows*cols*stride]. stride=1(스칼라)/3(벡터).</summary>
+    private void ParseGrid(string payload, int stride, ref int rows, ref int cols,
+                           ref float[][] data, ref bool valid)
+    {
+        int semi = payload.IndexOf(';');
+        if (semi < 0) return;
+        string[] dims = payload.Substring(0, semi).Split(',');
+        if (dims.Length < 2) return;
+        if (!int.TryParse(dims[0], out int r) || !int.TryParse(dims[1], out int c)) return;
+        if (r < 1 || c < 1 || r * c > maxGridPerTip) return;
+        rows = r; cols = c;
+        int need = r * c * stride;
 
-            // 말단~손끝 마디를 덮는 캡슐
-            Vector3 center = (tip + dist) * 0.5f;
-            Vector3 axis = tip - dist;
-            float len = axis.magnitude;
+        string[] tips = payload.Substring(semi + 1).Split('|');
+        if (data == null) data = new float[NumTips][];
+        for (int t = 0; t < NumTips; t++)
+        {
+            if (data[t] == null || data[t].Length != need) data[t] = new float[need];
+            if (t < tips.Length)
+            {
+                string[] vals = tips[t].Split(',');
+                int m = Mathf.Min(need, vals.Length);
+                for (int k = 0; k < m; k++) data[t][k] = ParseF(vals[k]);
+                for (int k = m; k < need; k++) data[t][k] = 0;
+            }
+            else { for (int k = 0; k < need; k++) data[t][k] = 0; }
+        }
+        valid = true;
+    }
 
-            var tr = padCaps[i].transform;
-            tr.position = center;
-            if (len > 1e-5f) tr.rotation = Quaternion.FromToRotation(Vector3.up, axis.normalized);
-            // 캡슐 기본 높이 2(±1) → scale.y = 마디길이/2 + 여유
-            tr.localScale = new Vector3(padThickness, len * 0.5f + padThickness * 0.5f, padThickness);
+    // ═══════════════════════════════════════════════════════════════════
+    //  렌더 (매 프레임, 캐시 + 현재 본 위치)
+    // ═══════════════════════════════════════════════════════════════════
 
-            padCaps[i].SetActive(true);
-            SetMatColor(padMats[i], Color.Lerp(weakColor, strongColor, v));
+    private Color ForceColor(float f) => Color.Lerp(weakColor, strongColor, Mathf.Clamp01(f / forceForFullColor));
+
+    private Vector3 ForceToWorldDir(float fx, float fy, float fz)
+        => Vector3.right * fx + Vector3.up * fz + Vector3.forward * fy;   // 법선=하늘(+Y)
+
+    private void PlaceArrow(Transform root, Transform shaft, float headLen,
+                            Vector3 start, Vector3 dir, float length, float width)
+    {
+        root.position = start;
+        root.rotation = Quaternion.FromToRotation(Vector3.up, dir.normalized);
+        shaft.localScale = new Vector3(width, length * 0.5f, width);
+        shaft.localPosition = new Vector3(0, headLen + length * 0.5f, 0);
+    }
+
+    private void RenderF1()
+    {
+        if (!f1Valid) return;
+        EnsureF1(f1Rows, f1Cols);
+        for (int t = 0; t < NumTips; t++)
+        {
+            if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out var normal))
+            { foreach (var go in f1Cells[t]) go.SetActive(false); continue; }
+
+            Quaternion rot = Quaternion.LookRotation(lengthAxis, normal);
+            Vector3 basePos = center + normal * f1SurfaceOffset;
+            float[] d = f1Data[t];
+            for (int r = 0; r < f1Rows; r++)
+                for (int c = 0; c < f1Cols; c++)
+                {
+                    int p = r * f1Cols + c;
+                    var cell = f1Cells[t][p];
+                    float gx = (c - (f1Cols - 1) * 0.5f) * f1CellSpacing;
+                    float gy = (r - (f1Rows - 1) * 0.5f) * f1CellSpacing;
+                    Vector3 pos = basePos + widthAxis * gx + lengthAxis * gy;
+                    if (!Finite(pos)) { cell.SetActive(false); continue; }
+                    cell.SetActive(true);
+                    cell.transform.SetPositionAndRotation(pos, rot);
+                    cell.transform.localScale = new Vector3(f1CellSize, 0.0007f, f1CellSize);
+                    SetMatColor(f1Mats[t][p], Color.Lerp(weakColor, strongColor, Mathf.Clamp01(d[p])));
+                }
         }
     }
 
-    // ── F2A: 손끝당 힘 벡터 화살표 ──────────────────────────────────────
-    private void RenderF2A(string payload)
+    private void RenderF2A()
     {
+        if (!f2aValid) return;
         EnsureF2A();
-        string[] vecs = payload.Split('|');
         for (int i = 0; i < NumTips; i++)
         {
-            if (i >= vecs.Length || tipBones[i] == null) { tipArrows[i].SetActive(false); continue; }
-            string[] c = vecs[i].Split(',');
-            if (c.Length < 3) { tipArrows[i].SetActive(false); continue; }
-
-            float fx = ParseF(c[0]), fy = ParseF(c[1]), fz = ParseF(c[2]);
+            if (tipBones[i] == null) { tipArrows[i].SetActive(false); continue; }
+            float fx = f2aData[i][0], fy = f2aData[i][1], fz = f2aData[i][2];
             float mag = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
             Vector3 start = tipBones[i].position;
             Vector3 dir = ForceToWorldDir(fx, fy, fz);
             if (mag < forceThreshold || !Finite(start) || dir.sqrMagnitude < 1e-8f)
             { tipArrows[i].SetActive(false); continue; }
-
             float len = Mathf.Min(mag * forceToLength, maxArrowLength);
             tipArrows[i].SetActive(true);
             PlaceArrow(tipArrows[i].transform, tipShafts[i], headLength, start, dir, len, shaftWidth);
@@ -420,62 +477,35 @@ public class TactileOverlay : MonoBehaviour
         }
     }
 
-    // ── F2B: 손끝 패드 벡터장 ───────────────────────────────────────────
-    private void RenderF2B(string payload)
+    private void RenderF2B()
     {
-        int semi = payload.IndexOf(';');
-        if (semi < 0) return;
-        string[] dims = payload.Substring(0, semi).Split(',');
-        if (dims.Length < 2) return;
-        if (!int.TryParse(dims[0], out int rows) || !int.TryParse(dims[1], out int cols)) return;
-        if (rows < 1 || cols < 1 || rows * cols > maxGridPerTip) return;   // 폭주 방지
-        EnsureF2B(rows, cols);
-
-        string[] tips = payload.Substring(semi + 1).Split('|');
+        if (!f2bValid) return;
+        EnsureF2B(f2bRows, f2bCols);
         for (int t = 0; t < NumTips; t++)
         {
-            if (t >= tips.Length || tipBones[t] == null || distalBones[t] == null)
+            if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out _))
             { foreach (var go in gridArrows[t]) go.SetActive(false); continue; }
 
-            Vector3 tip = tipBones[t].position, dist = distalBones[t].position;
-            if (!Finite(tip) || !Finite(dist))
-            { foreach (var go in gridArrows[t]) go.SetActive(false); continue; }
-
-            // 패드 중심 = 말단~손끝 마디 중점, 그리드는 그 위에 펼침
-            Vector3 padCenter = (tip + dist) * 0.5f;
-            Vector3 longAxis = tip - dist;
-            if (longAxis.sqrMagnitude < 1e-8f) longAxis = Vector3.forward;
-            longAxis.Normalize();
-            Vector3 widthAxis = Vector3.Cross(longAxis, Vector3.up);
-            if (widthAxis.sqrMagnitude < 1e-6f) widthAxis = Vector3.right;
-            widthAxis.Normalize();
-
-            string[] c = tips[t].Split(',');
-            for (int r = 0; r < rows; r++)
-            {
-                for (int col = 0; col < cols; col++)
+            float[] d = f2bData[t];
+            for (int r = 0; r < f2bRows; r++)
+                for (int c = 0; c < f2bCols; c++)
                 {
-                    int p = r * cols + col, o = p * 3;
+                    int p = r * f2bCols + c, o = p * 3;
                     var arrow = gridArrows[t][p];
-                    if (o + 2 >= c.Length) { arrow.SetActive(false); continue; }
-
-                    float fx = ParseF(c[o]), fy = ParseF(c[o + 1]), fz = ParseF(c[o + 2]);
+                    float fx = d[o], fy = d[o + 1], fz = d[o + 2];
                     float mag = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
                     if (mag < forceThreshold * 0.5f) { arrow.SetActive(false); continue; }
 
-                    float gx = (col - (cols - 1) * 0.5f) * gridSpacing;
-                    float gy = (r - (rows - 1) * 0.5f) * gridSpacing;
-                    Vector3 start = padCenter + widthAxis * gx + longAxis * gy;
+                    float gx = (c - (f2bCols - 1) * 0.5f) * gridSpacing;
+                    float gy = (r - (f2bRows - 1) * 0.5f) * gridSpacing;
+                    Vector3 start = center + widthAxis * gx + lengthAxis * gy;
                     Vector3 dir = ForceToWorldDir(fx, fy, fz);
                     if (!Finite(start) || dir.sqrMagnitude < 1e-8f) { arrow.SetActive(false); continue; }
-
                     float len = Mathf.Min(mag * gridForceToLength, maxArrowLength * 0.5f);
                     arrow.SetActive(true);
-                    PlaceArrow(arrow.transform, gridShafts[t][p], gridHeadLength,
-                               start, dir, len, gridShaftWidth);
+                    PlaceArrow(arrow.transform, gridShafts[t][p], gridHeadLength, start, dir, len, gridShaftWidth);
                     SetMatColor(gridMats[t][p], ForceColor(mag));
                 }
-            }
         }
     }
 
@@ -488,44 +518,38 @@ public class TactileOverlay : MonoBehaviour
             if (netConfig != null) StartReceiverThread();
             return;
         }
-
         if (!bonesReady)
         {
             bonesReady = TryResolveBones();
             if (!bonesReady) return;
         }
 
-        // 트래킹 끊김/화면 밖 → 전부 숨기고 대기 (앱 얼음 방지 핵심)
-        if (!HandTracked())
+        // 패킷이 바뀔 때만 파싱(문자열 Split을 30Hz로 제한 → GC 폭주 방지)
+        string packet = latestPacket;
+        if (packet != null && !ReferenceEquals(packet, processedPacket))
         {
-            HideAll("");
-            return;
+            try { ParsePacket(packet); }
+            catch (Exception e) { RateLog("파싱 예외: " + e.Message); }
+            processedPacket = packet;
         }
 
-        string packet = latestPacket;
-        if (packet == null) return;
+        // 트래킹 끊김/화면 밖 → 숨김
+        if (!HandTracked()) { HideAll(""); return; }
 
-        int colon = packet.IndexOf(':');
-        if (colon < 0) return;
-        string mode = packet.Substring(0, colon);
-        string payload = packet.Substring(colon + 1);
-
-        if (mode != currentMode) { HideAll(mode); currentMode = mode; }
-
-        // 한 프레임의 파싱/렌더 오류가 앱 전체를 멈추지 않도록 격리
         try
         {
-            switch (mode)
+            switch (curMode)
             {
-                case "F1":  RenderF1(payload);  break;
-                case "F2A": RenderF2A(payload); break;
-                case "F2B": RenderF2B(payload); break;
+                case "F1":  RenderF1();  break;
+                case "F2A": RenderF2A(); break;
+                case "F2B": RenderF2B(); break;
             }
         }
-        catch (Exception e)
-        {
-            Debug.LogWarning("[Tactile] 렌더 예외(무시): " + e.Message);
-            HideAll("");
-        }
+        catch (Exception e) { RateLog("렌더 예외: " + e.Message); HideAll(""); }
+    }
+
+    private void RateLog(string msg)
+    {
+        if (Time.time - lastLogTime > 2f) { Debug.LogWarning("[Tactile] " + msg); lastLogTime = Time.time; }
     }
 }

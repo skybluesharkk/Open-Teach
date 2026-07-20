@@ -138,7 +138,7 @@
 <div class="note">
   <b>실제 Quest와의 차이</b> — 여기서는 손이 고정된 일러스트지만, 헤드셋에서는 OVRSkeleton이 추적하는
   실제 손 위에 3D로 붙습니다. 시나리오는 <b>손등이 하늘, 손바닥이 지면</b>. 세 모드 모두 수정 반영:
-  <br>· <b>F1</b> 떠 있는 구가 아니라 <b>손끝 마디 표면</b>이 파랑→빨강으로 물듦(센서 존재 부위).
+  <br>· <b>F1</b> 손끝 패드의 <b>택셀별 히트맵</b> — 각 픽셀이 개별 센서값으로 물듦(한 덩어리 아님).
   <br>· <b>F2A</b> 화살촉이 손가락 접점, 몸통이 <b>하늘로 솟음</b>(못 모양→진짜 화살표).
   <br>· <b>F2B</b> 벡터장 중심이 <b>말단 마디 중앙</b>에 정렬, 전부 하늘 방향.
   <br>색상 맵(파랑 #2666ff → 빨강 #ff2619)은 TactileOverlay.cs와 동일. 키보드 <b>1 / 2 / 3</b>으로 모드 전환.
@@ -287,25 +287,37 @@ function drawUpArrow(x0, y0, ux, uy, length, headLen, width, color, alpha = 1) {
 }
 
 // ── 모드별 렌더 ────────────────────────────────────────────────────────
-// F1: 손끝 마디 표면을 덮는 캡슐이 힘에 따라 파랑→빨강 (떠 있는 구 아님)
+// F1: 손끝 패드의 택셀별 히트맵 — 각 셀이 개별 센서값으로 물듦 (한 덩어리 아님)
 function renderF1(t) {
+  const ROWS = 4, COLS = 6, SP = 12, CELL = 11;
   for (let i = 0; i < 5; i++) {
-    const v = fingerIntensity(t, i);
-    if (v < 0.02) continue;
-    const tip = TIPS[i], d = distalJoint(i);
-    // 끝마디만 덮음 (distal → tip), Unity 캡슐과 동일 범위
-    const ax = d.x, ay = d.y;
-    const c = lerpColor(v);
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = c;
-    ctx.lineWidth = tip.w * 0.92;
-    ctx.globalAlpha = 0.30 + v * 0.55;        // 힘 셀수록 진하게
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(tip.x, tip.y);
-    ctx.stroke();
-    ctx.restore();
+    const inten = fingerIntensity(t, i);
+    const cen = padCenter(i);
+    const tip = TIPS[i];
+    let lx = tip.x - KNUCKLES[i].x, ly = tip.y - KNUCKLES[i].y;
+    const lL = Math.hypot(lx, ly); lx /= lL; ly /= lL;
+    const wx = -ly, wy = lx;
+    const ang = Math.atan2(ly, lx);
+    // 접촉 중심 (택셀 좌표 원운동 — 파이썬 finger_grid_scalar와 동일)
+    const cr = (ROWS - 1) / 2 + (ROWS / 3) * Math.sin(t * 0.9 + i);
+    const cc = (COLS - 1) / 2 + (COLS / 3) * Math.cos(t * 0.7 + i * 0.5);
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const d2 = (r - cr) ** 2 + (c - cc) ** 2;
+        const v = Math.min(1, inten * Math.exp(-d2 / 3.0));   // 택셀별 스칼라
+        const gx = (c - (COLS - 1) / 2) * SP;
+        const gy = (r - (ROWS - 1) / 2) * SP;
+        const px = cen.x + wx * gx + lx * gy;
+        const py = cen.y + wy * gx + ly * gy;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(ang);
+        ctx.globalAlpha = 0.35 + v * 0.6;
+        ctx.fillStyle = lerpColor(v);
+        ctx.fillRect(-CELL / 2, -CELL / 2, CELL, CELL);       // 택셀 픽셀
+        ctx.restore();
+      }
+    }
   }
 }
 
