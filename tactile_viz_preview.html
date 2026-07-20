@@ -140,7 +140,7 @@
   실제 손 위에 3D로 붙습니다. 시나리오는 <b>손등이 하늘, 손바닥이 지면</b>. 세 모드 모두 수정 반영:
   <br>· <b>F1</b> 손끝 패드의 <b>택셀별 히트맵</b> — 각 픽셀이 개별 센서값으로 물듦(한 덩어리 아님).
   <br>· <b>F2A</b> 화살촉이 손가락 접점, 몸통이 <b>하늘로 솟음</b>(못 모양→진짜 화살표).
-  <br>· <b>F2B</b> 벡터장 중심이 <b>말단 마디 중앙</b>에 정렬, 전부 하늘 방향.
+  <br>· <b>F2B</b> 택셀이 <b>손끝 곡면을 감고</b> 화살표가 방사형으로 부채꼴(중심은 말단 마디).
   <br>색상 맵(파랑 #2666ff → 빨강 #ff2619)은 TactileOverlay.cs와 동일. 키보드 <b>1 / 2 / 3</b>으로 모드 전환.
 </div>
 
@@ -335,34 +335,39 @@ function renderF2A(t) {
 }
 
 // F2B: 손끝 패드 중심의 벡터장 — 전부 하늘로, 중심은 말단 마디 중앙
+// F2B: 손끝 곡면 래핑 — 택셀이 손끝 원통을 감고, 화살표가 방사형으로 부채꼴
 function renderF2B(t) {
-  const ROWS = 4, COLS = 6, SP = 15;
+  const ROWS = 4, COLS = 6, SP = 15, RPX = 34;   // RPX=손끝 곡면 반경(px)
   for (let i = 0; i < 5; i++) {
     const inten = fingerIntensity(t, i);
     const mag0 = inten * 5.0;
-    const cen = padCenter(i);                 // 말단 마디 중심에 정렬
+    const cen = padCenter(i);
     const tip = TIPS[i];
-    // 손가락 길이축(그리드 세로) + 그 수직(그리드 가로)
     let lx = tip.x - KNUCKLES[i].x, ly = tip.y - KNUCKLES[i].y;
     const lL = Math.hypot(lx, ly); lx /= lL; ly /= lL;
-    const wx = -ly, wy = lx;
+    const wx = -ly, wy = lx;                        // 가로(원통 감는 방향)
     const cr = (ROWS - 1) / 2 + (ROWS / 3) * Math.sin(t * 0.9 + i);
     const cc = (COLS - 1) / 2 + (COLS / 3) * Math.cos(t * 0.7 + i * 0.5);
     const ang = t * 0.8 + i * 0.7;
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const d2 = (r - cr) ** 2 + (c - cc) ** 2;
-        const w = Math.exp(-d2 / 3.0);
-        const fzv = mag0 * w;
+        const fzv = mag0 * Math.exp(-d2 / 3.0);
         if (fzv < 0.06) continue;
         const fxv = 0.4 * fzv * Math.cos(ang);
-        const gx = (c - (COLS - 1) / 2) * SP;
+        const arc = (c - (COLS - 1) / 2) * SP;
+        const theta = arc / RPX;                    // 곡면 감는 각도
+        const gxEff = RPX * Math.sin(theta);        // 가장자리 압축(곡면 투영)
         const gy = (r - (ROWS - 1) / 2) * SP;
-        const px = cen.x + wx * gx + lx * gy;
-        const py = cen.y + wy * gx + ly * gy;
-        const d = skyDir(i, fxv, fzv);
+        const px = cen.x + wx * gxEff + lx * gy;
+        const py = cen.y + wy * gxEff + ly * gy;
+        // 방향: 하늘 기준에서 theta만큼 바깥으로 부채꼴(방사형)
+        const base = skyDir(i, fxv, fzv);
+        let ux = base.ux + wx * Math.sin(theta) * 1.1;
+        let uy = base.uy + wy * Math.sin(theta) * 1.1;
+        const L = Math.hypot(ux, uy); ux /= L; uy /= L;
         const k = Math.min(1, fzv / 5);
-        drawUpArrow(px, py, d.ux, d.uy, 16 + fzv * 12, 12, 3.6, lerpColor(k), 0.96);
+        drawUpArrow(px, py, ux, uy, 15 + fzv * 11, 11, 3.4, lerpColor(k), 0.96);
       }
     }
   }

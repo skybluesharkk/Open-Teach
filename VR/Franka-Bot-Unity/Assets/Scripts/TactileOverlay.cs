@@ -39,6 +39,7 @@ public class TactileOverlay : MonoBehaviour
     public float gridHeadLength = 0.006f;
     public float gridSpacing = 0.003f;
     public float gridForceToLength = 0.008f;
+    public float fingerRadius = 0.008f;    // 손끝 곡면 반경 (m) — 택셀을 이 원통에 감음
 
     [Header("색상")]
     public Color weakColor = new Color(0.15f, 0.45f, 1f);
@@ -483,7 +484,7 @@ public class TactileOverlay : MonoBehaviour
         EnsureF2B(f2bRows, f2bCols);
         for (int t = 0; t < NumTips; t++)
         {
-            if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out _))
+            if (!PadFrame(t, out var center, out var lengthAxis, out var widthAxis, out var normal))
             { foreach (var go in gridArrows[t]) go.SetActive(false); continue; }
 
             float[] d = f2bData[t];
@@ -496,10 +497,17 @@ public class TactileOverlay : MonoBehaviour
                     float mag = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
                     if (mag < forceThreshold * 0.5f) { arrow.SetActive(false); continue; }
 
-                    float gx = (c - (f2bCols - 1) * 0.5f) * gridSpacing;
-                    float gy = (r - (f2bRows - 1) * 0.5f) * gridSpacing;
-                    Vector3 start = center + widthAxis * gx + lengthAxis * gy;
-                    Vector3 dir = ForceToWorldDir(fx, fy, fz);
+                    // 손끝 곡면 래핑: 세로=손가락 길이축, 가로=원통을 감는 호(arc)
+                    float gy  = (r - (f2bRows - 1) * 0.5f) * gridSpacing;
+                    float arc = (c - (f2bCols - 1) * 0.5f) * gridSpacing;
+                    float theta = arc / Mathf.Max(fingerRadius, 1e-4f);
+                    float ct = Mathf.Cos(theta), st = Mathf.Sin(theta);
+                    Vector3 nLocal = ct * normal + st * widthAxis;      // 국소 표면 법선(방사형)
+                    Vector3 tArc   = -st * normal + ct * widthAxis;     // 호 접선
+
+                    Vector3 start = center + lengthAxis * gy + fingerRadius * nLocal;
+                    // 화살표 방향: 법선(fz) 위주 + 접선 성분으로 살짝 기울임
+                    Vector3 dir = nLocal * fz + tArc * fx + lengthAxis * fy;
                     if (!Finite(start) || dir.sqrMagnitude < 1e-8f) { arrow.SetActive(false); continue; }
                     float len = Mathf.Min(mag * gridForceToLength, maxArrowLength * 0.5f);
                     arrow.SetActive(true);
