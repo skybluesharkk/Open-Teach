@@ -499,11 +499,12 @@ public class TactileOverlay : MonoBehaviour
     // jet/parula 스타일 컬러맵: 파랑→시안→초록→노랑→주황빨강
     private static readonly Color[] HeatStops =
     {
-        new Color(0.09f, 0.22f, 0.66f),
-        new Color(0.00f, 0.62f, 0.95f),
-        new Color(0.13f, 0.79f, 0.35f),
-        new Color(1.00f, 0.86f, 0.10f),
-        new Color(0.98f, 0.30f, 0.05f),
+        new Color(0.09f, 0.22f, 0.66f),   // 파랑 (Light)
+        new Color(0.00f, 0.62f, 0.95f),   // 시안
+        new Color(0.13f, 0.79f, 0.35f),   // 초록 (Medium)
+        new Color(1.00f, 0.86f, 0.10f),   // 노랑
+        new Color(0.98f, 0.45f, 0.02f),   // 주황
+        new Color(0.84f, 0.04f, 0.07f),   // 빨강 (Strong) — 최대 힘
     };
     private static Color Colormap(float k)
     {
