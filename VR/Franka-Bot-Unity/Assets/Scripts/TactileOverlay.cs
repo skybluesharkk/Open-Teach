@@ -48,6 +48,7 @@ public class TactileOverlay : MonoBehaviour
 
     [Header("임계값")]
     public float forceThreshold = 0.1f;    // F2 이하이면 숨김 (N)
+    public float scalarThreshold = 0.03f;  // F1 스칼라 피크 이하이면 셸 숨김 (0~1)
     public int maxGridPerTip = 96;         // 손끝당 택셀 상한(폭주 방지)
 
     private static readonly OVRSkeleton.BoneId[] TipBoneIds =
