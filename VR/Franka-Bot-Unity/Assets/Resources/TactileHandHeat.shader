@@ -77,7 +77,8 @@ Shader "Tactile/HandHeat"
                 // 은은한 램버트 근사 조명 (기본 손 색이 완전 평면으로 보이지 않게)
                 float ndl = saturate(dot(normalize(i.wnorm), normalize(_WorldSpaceLightPos0.xyz))) * 0.45 + 0.55;
                 float3 baseC = _BaseColor.rgb * ndl;
-                float3 col = lerp(baseC, jetRamp(heat), smoothstep(0.02, 0.22, heat));
+                // 임계 상향: 미약한 원거리 히트가 손바닥 전체를 물들이지 않게
+                float3 col = lerp(baseC, jetRamp(heat), smoothstep(0.06, 0.35, heat));
                 return fixed4(col, 1.0);
             }
             ENDCG

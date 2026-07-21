@@ -40,6 +40,9 @@ public class TactileOverlay : MonoBehaviour
     public float gridSpacing = 0.0024f;     // 5x8 그리드가 끝마디 폭에 맞도록
     public float gridForceToLength = 0.008f;
     public float fingerRadius = 0.008f;    // 손끝 곡면 반경 (m) — 택셀을 이 원통에 감음
+    // 엄지 등쪽(손톱) 방향은 손바닥 법선에서 엄지 축 기준으로 회전돼 있음 (오른손 기준 왼쪽으로)
+    // 방향이 반대면 Inspector에서 부호 반전
+    public float thumbRollDeg = -55f;
 
     [Header("색상")]
     public Color weakColor = new Color(0.15f, 0.45f, 1f);
@@ -116,7 +119,7 @@ public class TactileOverlay : MonoBehaviour
     // ── F1 손 메시 직접 변색 ─────────────────────────────────────────────
     // 손의 SkinnedMeshRenderer 머티리얼을 히트 셰이더로 교체해
     // 별도 레이어 없이 손 그래픽 자체가 물들게 함. 실패 시 셸 방식 폴백.
-    public float handHeatRadius = 0.016f;                // 히트 확산 반경 (m)
+    public float handHeatRadius = 0.011f;                // 히트 확산 반경 (m) — 16mm는 손바닥까지 번짐
     public Color handBaseColor = new Color(0.13f, 0.13f, 0.16f, 1f);
     private SkinnedMeshRenderer handRenderer;
     private Material handHeatMat;
@@ -250,7 +253,9 @@ public class TactileOverlay : MonoBehaviour
     // 손목·검지관절·소지관절 3점으로 매 프레임 계산하므로 캘리브레이션 없이
     // 손 회전을 항상 따라가고, 엄지(다른 손가락과 ~90° 회전)도 등쪽에 올바르게 붙음.
     // (기존 world-up 1회 학습 방식은 엄지에서 바닥쪽에 붙는 결함이 있었음)
-    private float handSign = 0f;   // 손등 방향 부호 — 첫 프레임 1회 결정(손등 위 자세 가정), 이후 불변
+    // 오른손: cross(손목→검지1, 손목→소지1)은 자세와 무관하게 항상 손등쪽(해부학적 상수)
+    // — 첫 자세 기반 부호 학습은 손바닥 보고 시작하면 반전되는 결함이 있어 제거
+    public bool flipHandNormal = false;   // 혹시 반대로 보이면 Inspector에서 체크
 
     private bool PadFrame(int i, out Vector3 center, out Vector3 lengthAxis,
                           out Vector3 widthAxis, out Vector3 normal)
@@ -272,9 +277,7 @@ public class TactileOverlay : MonoBehaviour
                                pinky1Bone.position - wristBone.position);
         if (nH.sqrMagnitude > 1e-8f && Finite(nH))
         {
-            if (handSign == 0f)
-                handSign = Vector3.Dot(nH, Vector3.up) >= 0f ? 1f : -1f;
-            nH *= handSign;
+            if (flipHandNormal) nH = -nH;
         }
         else
         {   // 폴백: world up 기반
@@ -291,6 +294,11 @@ public class TactileOverlay : MonoBehaviour
             normal = Vector3.Cross(w0.normalized, lengthAxis);
         }
         normal.Normalize();
+
+        // 엄지(i==0): 등쪽이 손바닥 법선에서 축 기준으로 회전돼 있음 → 롤 보정
+        if (i == 0)
+            normal = (Quaternion.AngleAxis(thumbRollDeg, lengthAxis) * normal).normalized;
+
         widthAxis = Vector3.Cross(lengthAxis, normal).normalized;
         return true;
     }
@@ -690,6 +698,12 @@ public class TactileOverlay : MonoBehaviour
         // 1순위: 손 메시 자체 변색 (히트 셰이더)
         if (TryApplyHandHeatMat())
         {
+            // OVR 손 시스템이 신뢰도 변화 등으로 머티리얼을 되돌리는 경우 감지 → 재적용
+            if (handRenderer.sharedMaterial != handHeatMat)
+            {
+                RateLog("손 머티리얼이 외부에서 교체됨 — 재적용");
+                handRenderer.sharedMaterial = handHeatMat;
+            }
             for (int t = 0; t < NumTips; t++)
             {
                 float peak = 0f; float wSum = 0f, gySum = 0f;
@@ -768,7 +782,9 @@ public class TactileOverlay : MonoBehaviour
             float fx = f2aData[i][0], fy = f2aData[i][1], fz = f2aData[i][2];
             float mag = Mathf.Sqrt(fx * fx + fy * fy + fz * fz);
             Vector3 start = tipBones[i].position;
-            Vector3 dir = ForceToWorldDir(fx, fy, fz);
+            // 방향 = 손가락 등쪽 법선 (엄지 롤 보정 포함) — world up 고정이던 것을 변경
+            Vector3 dir = PadFrame(i, out _, out _, out _, out var nrm) ? nrm
+                        : ForceToWorldDir(fx, fy, fz);
             if (mag < forceThreshold || !Finite(start) || dir.sqrMagnitude < 1e-8f)
             { tipArrows[i].SetActive(false); continue; }
             float len = Mathf.Min(mag * forceToLength, maxArrowLength);
