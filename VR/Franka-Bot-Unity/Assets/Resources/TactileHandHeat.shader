@@ -18,7 +18,9 @@ Shader "Tactile/HandHeat"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
-            float4 _HeatPts[5];      // xyz: world pos, w: intensity(0~1)
+            // 배열(SetVectorArray)은 Vulkan/IL2CPP에서 전달이 조용히 실패하는
+            // 사례가 있어 개별 유니폼 5개로 전달 (xyz: world pos, w: intensity 0~1)
+            float4 _HeatPt0, _HeatPt1, _HeatPt2, _HeatPt3, _HeatPt4;
             float4 _BaseColor;
             float  _HeatRadius;
 
@@ -56,16 +58,20 @@ Shader "Tactile/HandHeat"
                 return col;
             }
 
+            float heatFrom (float3 wpos, float4 pt, float r2)
+            {
+                float3 d = wpos - pt.xyz;
+                return pt.w * exp(-dot(d, d) / r2);
+            }
+
             fixed4 frag (v2f i) : SV_Target
             {
-                float heat = 0.0;
                 float r2 = _HeatRadius * _HeatRadius;
-                [unroll]
-                for (int n = 0; n < 5; n++)
-                {
-                    float3 d = i.wpos - _HeatPts[n].xyz;
-                    heat += _HeatPts[n].w * exp(-dot(d, d) / r2);
-                }
+                float heat = heatFrom(i.wpos, _HeatPt0, r2)
+                           + heatFrom(i.wpos, _HeatPt1, r2)
+                           + heatFrom(i.wpos, _HeatPt2, r2)
+                           + heatFrom(i.wpos, _HeatPt3, r2)
+                           + heatFrom(i.wpos, _HeatPt4, r2);
                 heat = saturate(heat);
 
                 // 은은한 램버트 근사 조명 (기본 손 색이 완전 평면으로 보이지 않게)

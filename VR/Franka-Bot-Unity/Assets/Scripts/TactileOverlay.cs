@@ -77,6 +77,7 @@ public class TactileOverlay : MonoBehaviour
     // ── 본 ─────────────────────────────────────────────────────────────
     private Transform[] tipBones = new Transform[NumTips];
     private Transform[] distalBones = new Transform[NumTips];
+    private Transform wristBone, index1Bone, pinky1Bone;   // 손바닥 평면 법선용
     private bool bonesReady = false;
 
     // ── 파싱 캐시(패킷 바뀔 때만 갱신) ──────────────────────────────────
@@ -214,11 +215,16 @@ public class TactileOverlay : MonoBehaviour
 
         int found = 0;
         foreach (var bone in RightHandSkeleton.Bones)
+        {
             for (int i = 0; i < NumTips; i++)
             {
                 if (bone.Id == TipBoneIds[i])    { tipBones[i] = bone.Transform; found++; }
                 if (bone.Id == DistalBoneIds[i]) { distalBones[i] = bone.Transform; }
             }
+            if (bone.Id == OVRSkeleton.BoneId.Hand_WristRoot) wristBone = bone.Transform;
+            if (bone.Id == OVRSkeleton.BoneId.Hand_Index1)    index1Bone = bone.Transform;
+            if (bone.Id == OVRSkeleton.BoneId.Hand_Pinky1)    pinky1Bone = bone.Transform;
+        }
         return found == NumTips;
     }
 
@@ -235,11 +241,11 @@ public class TactileOverlay : MonoBehaviour
     }
 
     /// <summary>손끝 패드 좌표계: 중심=(tip+distal)/2, 길이축, 폭축, 법선.</summary>
-    // 본 회전을 따라가는 손끝 프레임.
-    // 예전엔 world up 기준이라 손을 굴려도(롤) 그리드가 하늘에 붙박이였음 —
-    // 첫 유효 프레임에서 본-로컬 법선축을 학습한 뒤, 이후엔 본과 함께 회전.
-    private Vector3[] boneNormalLocal = new Vector3[NumTips];
-    private bool[] boneNormalCal = new bool[NumTips];
+    // 손끝 프레임 — 법선은 '손바닥 평면의 법선(손등 방향)'에서 유도.
+    // 손목·검지관절·소지관절 3점으로 매 프레임 계산하므로 캘리브레이션 없이
+    // 손 회전을 항상 따라가고, 엄지(다른 손가락과 ~90° 회전)도 등쪽에 올바르게 붙음.
+    // (기존 world-up 1회 학습 방식은 엄지에서 바닥쪽에 붙는 결함이 있었음)
+    private float handSign = 0f;   // 손등 방향 부호 — 첫 프레임 1회 결정(손등 위 자세 가정), 이후 불변
 
     private bool PadFrame(int i, out Vector3 center, out Vector3 lengthAxis,
                           out Vector3 widthAxis, out Vector3 normal)
@@ -254,22 +260,27 @@ public class TactileOverlay : MonoBehaviour
         if (lengthAxis.sqrMagnitude < 1e-8f) lengthAxis = Vector3.forward;
         lengthAxis.Normalize();
 
-        Quaternion boneRot = distalBones[i].rotation;
-        if (!boneNormalCal[i])
+        // 손등 법선 = (손목→검지관절) × (손목→소지관절), 부호는 최초 1회 고정
+        Vector3 nH = Vector3.zero;
+        if (wristBone != null && index1Bone != null && pinky1Bone != null)
+            nH = Vector3.Cross(index1Bone.position - wristBone.position,
+                               pinky1Bone.position - wristBone.position);
+        if (nH.sqrMagnitude > 1e-8f && Finite(nH))
         {
-            // 1회 캘리브레이션: 현재(대개 손등이 위인 시작 자세)의 world-up 기반
-            // 법선을 본-로컬 좌표로 저장 → 이후 손 회전을 그대로 따라감
+            if (handSign == 0f)
+                handSign = Vector3.Dot(nH, Vector3.up) >= 0f ? 1f : -1f;
+            nH *= handSign;
+        }
+        else
+        {   // 폴백: world up 기반
             Vector3 w0 = Vector3.Cross(lengthAxis, Vector3.up);
             if (w0.sqrMagnitude < 1e-6f) w0 = Vector3.right;
-            Vector3 n0 = Vector3.Cross(w0.normalized, lengthAxis).normalized;
-            boneNormalLocal[i] = Quaternion.Inverse(boneRot) * n0;
-            boneNormalCal[i] = true;
+            nH = Vector3.Cross(w0.normalized, lengthAxis);
         }
 
-        normal = boneRot * boneNormalLocal[i];
-        normal -= lengthAxis * Vector3.Dot(normal, lengthAxis);   // 길이축과 직교화
+        normal = nH - lengthAxis * Vector3.Dot(nH, lengthAxis);   // 길이축과 직교화
         if (normal.sqrMagnitude < 1e-6f)
-        {   // 퇴화 시 world up 폴백
+        {
             Vector3 w0 = Vector3.Cross(lengthAxis, Vector3.up);
             if (w0.sqrMagnitude < 1e-6f) w0 = Vector3.right;
             normal = Vector3.Cross(w0.normalized, lengthAxis);
@@ -580,7 +591,17 @@ public class TactileOverlay : MonoBehaviour
         {
             handRendererSearched = true;
             if (RightHandSkeleton != null)
-                handRenderer = RightHandSkeleton.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            {
+                // 리그에 SMR이 여러 개(비활성 포함)일 수 있음 — '보이는' 것을 골라야
+                // 비활성 렌더러를 바꿔놓고 성공으로 착각하는 문제 방지
+                var smrs = RightHandSkeleton.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+                foreach (var r in smrs)
+                    if (r.enabled && r.gameObject.activeInHierarchy) { handRenderer = r; break; }
+                if (handRenderer == null && smrs.Length > 0) handRenderer = smrs[0];
+                Debug.Log($"[Tactile] 손 렌더러 탐색: {smrs.Length}개 발견, 선택=" +
+                          (handRenderer != null ? handRenderer.name +
+                           (handRenderer.enabled && handRenderer.gameObject.activeInHierarchy ? "(활성)" : "(비활성!)") : "없음"));
+            }
             if (handRenderer != null)
             {
                 var sh = Shader.Find("Tactile/HandHeat");
@@ -635,7 +656,12 @@ public class TactileOverlay : MonoBehaviour
                 Vector3 p = center + lengthAxis * (wSum > 1e-5f ? gySum / wSum : 0f);
                 heatPts[t] = new Vector4(p.x, p.y, p.z, Mathf.Clamp01(peak * 1.15f));
             }
-            handHeatMat.SetVectorArray("_HeatPts", heatPts);
+            // 배열 전달(SetVectorArray)은 Vulkan/IL2CPP에서 실패 사례 → 개별 전달
+            handHeatMat.SetVector("_HeatPt0", heatPts[0]);
+            handHeatMat.SetVector("_HeatPt1", heatPts[1]);
+            handHeatMat.SetVector("_HeatPt2", heatPts[2]);
+            handHeatMat.SetVector("_HeatPt3", heatPts[3]);
+            handHeatMat.SetVector("_HeatPt4", heatPts[4]);
             // 셸은 숨김
             if (heatShells[0] != null) foreach (var go in heatShells) if (go) go.SetActive(false);
             return;
