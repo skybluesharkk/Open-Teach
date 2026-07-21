@@ -90,7 +90,7 @@ def finger_grid_scalar(t, idx, rows, cols):
     for r in range(rows):
         for c in range(cols):
             d2 = (r - cr) ** 2 + (c - cc) ** 2
-            out.append(min(1.0, peak * math.exp(-d2 / 3.0)))
+            out.append(min(1.0, peak * math.exp(-d2 / 5.5)))   # 접촉 분포 넓게
     return out
 
 

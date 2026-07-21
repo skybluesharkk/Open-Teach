@@ -535,8 +535,9 @@ public class TactileOverlay : MonoBehaviour
     {
         if (!f1Valid) return;
         EnsureHeatShells();
-        float padLen = Mathf.Max(f1Rows * f1CellSpacing, 0.015f);
-        float radius = fingerRadius + f1SurfaceOffset * 0.5f;
+        // 끝마디 전체를 넉넉히 덮도록 (레퍼런스처럼 넓게 번지는 인상)
+        float padLen = Mathf.Max(f1Rows * f1CellSpacing * 1.7f, 0.024f);
+        float radius = (fingerRadius + f1SurfaceOffset * 0.5f) * 1.12f;
 
         for (int t = 0; t < NumTips; t++)
         {
@@ -563,8 +564,8 @@ public class TactileOverlay : MonoBehaviour
                 float rf = (p.z + 0.5f) * (f1Rows - 1);
                 float cf = (p.x * 0.5f + 0.5f) * (f1Cols - 1);
                 float val = BilinearSample(d, f1Rows, f1Cols, rf, cf);
-                Color c = Colormap(val);
-                float a = val < 0.03f ? 0f : Mathf.Clamp01(val * 1.8f) * 0.85f;
+                Color c = Colormap(Mathf.Clamp01(val * 1.15f));   // 중심이 빨강에 확실히 도달
+                float a = val < 0.02f ? 0f : Mathf.Clamp01(val * 2.5f);  // 진하게
                 cols32[v] = new Color(c.r, c.g, c.b, a);
             }
             heatMeshes[t].colors32 = cols32;
@@ -621,8 +622,9 @@ public class TactileOverlay : MonoBehaviour
                     Vector3 tArc   = -st * normal + ct * widthAxis;     // 호 접선
 
                     Vector3 start = center + lengthAxis * gy + fingerRadius * nLocal;
-                    // 화살표 방향: 법선(fz) 위주 + 접선 성분으로 살짝 기울임
-                    Vector3 dir = nLocal * fz + tArc * fx + lengthAxis * fy;
+                    // 눌린 아랫피부 택셀의 관통 대응점(윗피부)에서 표면에 수직으로 솟음
+                    // (F1의 관통 쌍 개념과 동일 — 크기·색은 힘 크기 |F| 반영)
+                    Vector3 dir = nLocal;
                     if (!Finite(start) || dir.sqrMagnitude < 1e-8f) { arrow.SetActive(false); continue; }
                     float len = Mathf.Min(mag * gridForceToLength, maxArrowLength * 0.5f);
                     arrow.SetActive(true);
