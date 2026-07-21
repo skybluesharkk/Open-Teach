@@ -56,6 +56,10 @@
 **원인**: logcat에 `VrPowerManagerService: HEADSET_UNMOUNTED → WAITING_FOR_SLEEP`.
 근접 센서가 얼굴을 못 느끼면 Quest가 절전 진입.
 
+**주의: 이 설정은 헤드셋 재부팅 시 풀린다** — "어제 껐는데 또 멈춘다"의 원인.
+테스트 세션 시작 때마다 재적용할 것. 헤드셋을 살짝 들거나 이마에 걸치기만 해도
+근접 센서가 미착용으로 판단할 수 있음.
+
 **해결** (개발 중, 재부팅 전까지 유효):
 ```bash
 adb shell am broadcast -a com.oculus.vrpowermanager.prox_close      # 절전 끔
