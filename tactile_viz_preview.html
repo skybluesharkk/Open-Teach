@@ -341,15 +341,15 @@ function renderF1(t) {
     const bx = cen.x + wx * gx + lx * gy;
     const by = cen.y + wy * gx + ly * gy;
 
-    // 손 표면 위에서 피어나는 열 — 손가락 폭을 따라 클리핑해 "표면이 물드는" 인상
+    // 손 표면 위에서 피어나는 열 — 손가락 전체 캡슐로 클리핑
+    // (헤드셋에선 셰이더가 손 메시 전체에서 거리 감쇠하므로 잘림 없음; 근사 표현)
     ctx.save();
     ctx.beginPath();
-    const d = distalJoint(i);
-    // 끝마디 캡슐 영역으로 클리핑
+    const k = KNUCKLES[i];
     const capR = tip.w * 0.5;
-    ctx.moveTo(d.x + -ly * capR, d.y + lx * capR);
-    ctx.arc(tip.x, tip.y, capR, Math.atan2(ly, lx) - Math.PI / 2, Math.atan2(ly, lx) + Math.PI / 2);
-    ctx.arc(d.x, d.y, capR, Math.atan2(ly, lx) + Math.PI / 2, Math.atan2(ly, lx) - Math.PI / 2);
+    const a = Math.atan2(ly, lx);
+    ctx.arc(tip.x, tip.y, capR, a - Math.PI / 2, a + Math.PI / 2);   // 손끝 반원
+    ctx.arc(k.x, k.y, capR, a + Math.PI / 2, a - Math.PI / 2);      // 관절 반원
     ctx.closePath();
     ctx.clip();
 
