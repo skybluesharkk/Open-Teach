@@ -100,7 +100,12 @@ public class TactileOverlay : MonoBehaviour
     private GameObject[] tipArrows = new GameObject[NumTips];
     private Transform[] tipShafts = new Transform[NumTips];
     private Material[] tipMats = new Material[NumTips];
-    private GameObject[][] gridArrows; private Transform[][] gridShafts; private Material[][] gridMats;
+    private GameObject[][] gridArrows; private Transform[][] gridShafts;
+    // F2B 성능: 화살표별 고유 머티리얼(200개, 매 프레임 색 쓰기) 대신
+    // 색을 양자화한 공유 팔레트 — 머티리얼 16개 고정, 색 갱신은 포인터 교체 (TactAR 방식)
+    private Renderer[][] gridRendA, gridRendB;   // 축/화살촉 렌더러
+    private Material[] heatPalette;
+    private const int PaletteN = 16;
     private int gridR = 0, gridC = 0;
 
     // ── 점진적 생성(프레임당 조금씩 만들어 스파이크 제거) ──────────────
@@ -426,23 +431,70 @@ public class TactileOverlay : MonoBehaviour
         }
     }
 
+    private void EnsureHeatPalette()
+    {
+        if (heatPalette != null) return;
+        heatPalette = new Material[PaletteN];
+        for (int i = 0; i < PaletteN; i++)
+        {
+            var m = MakeMat();
+            Color c = Colormap(i / (float)(PaletteN - 1));
+            m.color = c;
+            m.SetColor("_EmissionColor", c * 0.7f);
+            heatPalette[i] = m;
+        }
+    }
+
     private void EnsureF2B(int rows, int cols)
     {
         if (gridArrows != null && rows == gridR && cols == gridC) return;
         if (gridArrows != null)
             foreach (var set in gridArrows) foreach (var go in set) if (go) Destroy(go);
+        EnsureHeatPalette();
         gridR = rows; gridC = cols;
         int n = rows * cols;
         gridArrows = new GameObject[NumTips][];
         gridShafts = new Transform[NumTips][];
-        gridMats   = new Material[NumTips][];
+        gridRendA  = new Renderer[NumTips][];
+        gridRendB  = new Renderer[NumTips][];
         for (int t = 0; t < NumTips; t++)
         {
             gridArrows[t] = new GameObject[n];
             gridShafts[t] = new Transform[n];
-            gridMats[t]   = new Material[n];
+            gridRendA[t]  = new Renderer[n];
+            gridRendB[t]  = new Renderer[n];
         }
         f2bBuilt = 0; f2bBuilding = true;
+    }
+
+    // 공유 팔레트 머티리얼을 쓰는 화살표 (F2B 전용 — 고유 머티리얼 생성 없음)
+    private GameObject MakeArrowShared(float width, float headLen,
+                                       out Transform shaft, out Renderer rShaft, out Renderer rHead)
+    {
+        var root = new GameObject("TactArrow");
+
+        var head = new GameObject("head");
+        head.transform.SetParent(root.transform, false);
+        head.AddComponent<MeshFilter>().sharedMesh = coneMesh;
+        rHead = head.AddComponent<MeshRenderer>();
+        rHead.sharedMaterial = heatPalette[0];
+        rHead.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rHead.receiveShadows = false;
+        head.transform.localScale = new Vector3(width * 2.4f, headLen, width * 2.4f);
+
+        var shaftGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(shaftGo.GetComponent<Collider>());
+        shaftGo.transform.SetParent(root.transform, false);
+        rShaft = shaftGo.GetComponent<Renderer>();
+        rShaft.sharedMaterial = heatPalette[0];
+        rShaft.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rShaft.receiveShadows = false;
+        shaftGo.transform.localScale = new Vector3(width, 0.01f, width);
+        shaftGo.transform.localPosition = new Vector3(0, headLen, 0);
+
+        shaft = shaftGo.transform;
+        root.SetActive(false);
+        return root;
     }
 
     private void BuildF2B()
@@ -452,8 +504,8 @@ public class TactileOverlay : MonoBehaviour
         while (f2bBuilt < total && budget-- > 0)
         {
             int t = f2bBuilt / n, p = f2bBuilt % n;
-            gridArrows[t][p] = MakeArrow(gridShaftWidth, gridHeadLength,
-                out gridShafts[t][p], out gridMats[t][p]);
+            gridArrows[t][p] = MakeArrowShared(gridShaftWidth, gridHeadLength,
+                out gridShafts[t][p], out gridRendA[t][p], out gridRendB[t][p]);
             f2bBuilt++;
         }
         if (f2bBuilt >= total) f2bBuilding = false;
@@ -764,7 +816,14 @@ public class TactileOverlay : MonoBehaviour
                     float len = Mathf.Min(mag * gridForceToLength, maxArrowLength * 0.5f);
                     arrow.SetActive(true);
                     PlaceArrow(arrow.transform, gridShafts[t][p], gridHeadLength, start, dir, len, gridShaftWidth);
-                    SetMatColor(gridMats[t][p], ForceColor(mag));
+                    // 팔레트 버킷 선택 — 머티리얼 속성 쓰기 대신 포인터 교체(배칭 유지)
+                    int bucket = (int)(Mathf.Clamp01(mag / forceForFullColor) * (PaletteN - 1));
+                    var pm = heatPalette[bucket];
+                    if (gridRendA[t][p].sharedMaterial != pm)
+                    {
+                        gridRendA[t][p].sharedMaterial = pm;
+                        gridRendB[t][p].sharedMaterial = pm;
+                    }
                 }
         }
     }
