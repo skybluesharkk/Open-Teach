@@ -107,6 +107,18 @@ public class TactileOverlay : MonoBehaviour
     private int f2bBuilt;                  // 지금까지 생성된 개수
     private bool f2bBuilding;
 
+    // ── F1 손 메시 직접 변색 ─────────────────────────────────────────────
+    // 손의 SkinnedMeshRenderer 머티리얼을 히트 셰이더로 교체해
+    // 별도 레이어 없이 손 그래픽 자체가 물들게 함. 실패 시 셸 방식 폴백.
+    public float handHeatRadius = 0.016f;                // 히트 확산 반경 (m)
+    public Color handBaseColor = new Color(0.13f, 0.13f, 0.16f, 1f);
+    private SkinnedMeshRenderer handRenderer;
+    private Material handHeatMat;
+    private Material handOrigMat;
+    private bool handMatApplied = false;
+    private bool handRendererSearched = false;
+    private Vector4[] heatPts = new Vector4[NumTips];
+
     private static Shader _stdShader;      // Shader.Find 1회 캐싱(성능 함정 회피)
     private Mesh coneMesh;
     private float lastLogTime = -10f;
@@ -183,7 +195,7 @@ public class TactileOverlay : MonoBehaviour
         if (paused) StopReceiver();   // 재개 시 Update가 다시 연결
     }
 
-    void OnDestroy() { StopReceiver(); }
+    void OnDestroy() { StopReceiver(); RestoreHandMat(); }
 
     // ═══════════════════════════════════════════════════════════════════
     //  본
@@ -223,6 +235,12 @@ public class TactileOverlay : MonoBehaviour
     }
 
     /// <summary>손끝 패드 좌표계: 중심=(tip+distal)/2, 길이축, 폭축, 법선.</summary>
+    // 본 회전을 따라가는 손끝 프레임.
+    // 예전엔 world up 기준이라 손을 굴려도(롤) 그리드가 하늘에 붙박이였음 —
+    // 첫 유효 프레임에서 본-로컬 법선축을 학습한 뒤, 이후엔 본과 함께 회전.
+    private Vector3[] boneNormalLocal = new Vector3[NumTips];
+    private bool[] boneNormalCal = new bool[NumTips];
+
     private bool PadFrame(int i, out Vector3 center, out Vector3 lengthAxis,
                           out Vector3 widthAxis, out Vector3 normal)
     {
@@ -235,10 +253,29 @@ public class TactileOverlay : MonoBehaviour
         lengthAxis = tip - dist;
         if (lengthAxis.sqrMagnitude < 1e-8f) lengthAxis = Vector3.forward;
         lengthAxis.Normalize();
-        widthAxis = Vector3.Cross(lengthAxis, Vector3.up);
-        if (widthAxis.sqrMagnitude < 1e-6f) widthAxis = Vector3.right;
-        widthAxis.Normalize();
-        normal = Vector3.Cross(widthAxis, lengthAxis).normalized;
+
+        Quaternion boneRot = distalBones[i].rotation;
+        if (!boneNormalCal[i])
+        {
+            // 1회 캘리브레이션: 현재(대개 손등이 위인 시작 자세)의 world-up 기반
+            // 법선을 본-로컬 좌표로 저장 → 이후 손 회전을 그대로 따라감
+            Vector3 w0 = Vector3.Cross(lengthAxis, Vector3.up);
+            if (w0.sqrMagnitude < 1e-6f) w0 = Vector3.right;
+            Vector3 n0 = Vector3.Cross(w0.normalized, lengthAxis).normalized;
+            boneNormalLocal[i] = Quaternion.Inverse(boneRot) * n0;
+            boneNormalCal[i] = true;
+        }
+
+        normal = boneRot * boneNormalLocal[i];
+        normal -= lengthAxis * Vector3.Dot(normal, lengthAxis);   // 길이축과 직교화
+        if (normal.sqrMagnitude < 1e-6f)
+        {   // 퇴화 시 world up 폴백
+            Vector3 w0 = Vector3.Cross(lengthAxis, Vector3.up);
+            if (w0.sqrMagnitude < 1e-6f) w0 = Vector3.right;
+            normal = Vector3.Cross(w0.normalized, lengthAxis);
+        }
+        normal.Normalize();
+        widthAxis = Vector3.Cross(lengthAxis, normal).normalized;
         return true;
     }
 
@@ -413,8 +450,12 @@ public class TactileOverlay : MonoBehaviour
 
     private void HideAll(string except)
     {
-        if (except != "F1" && heatShells[0] != null)
-            foreach (var go in heatShells) if (go) go.SetActive(false);
+        if (except != "F1")
+        {
+            RestoreHandMat();   // 손 메시를 원래 모습으로
+            if (heatShells[0] != null)
+                foreach (var go in heatShells) if (go) go.SetActive(false);
+        }
         if (except != "F2A" && tipArrows[0] != null)
             foreach (var go in tipArrows) if (go) go.SetActive(false);
         if (except != "F2B" && gridArrows != null)
@@ -531,9 +572,76 @@ public class TactileOverlay : MonoBehaviour
         shaft.localPosition = new Vector3(0, headLen + length * 0.5f, 0);
     }
 
+    // 손 SkinnedMeshRenderer 탐색 + 히트 머티리얼 적용/복원
+    private bool TryApplyHandHeatMat()
+    {
+        if (handMatApplied) return true;
+        if (!handRendererSearched)
+        {
+            handRendererSearched = true;
+            if (RightHandSkeleton != null)
+                handRenderer = RightHandSkeleton.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            if (handRenderer != null)
+            {
+                var sh = Shader.Find("Tactile/HandHeat");
+                if (sh != null)
+                {
+                    handHeatMat = new Material(sh);
+                    handHeatMat.SetColor("_BaseColor", handBaseColor);
+                    handHeatMat.SetFloat("_HeatRadius", handHeatRadius);
+                }
+                else RateLog("HandHeat 셰이더 없음 — 셸 방식 폴백");
+            }
+            else RateLog("손 SkinnedMeshRenderer 못 찾음 — 셸 방식 폴백");
+        }
+        if (handRenderer == null || handHeatMat == null) return false;
+
+        handOrigMat = handRenderer.sharedMaterial;
+        handRenderer.sharedMaterial = handHeatMat;
+        handMatApplied = true;
+        return true;
+    }
+
+    private void RestoreHandMat()
+    {
+        if (!handMatApplied) return;
+        if (handRenderer != null && handOrigMat != null)
+            handRenderer.sharedMaterial = handOrigMat;
+        handMatApplied = false;
+    }
+
     private void RenderF1()
     {
         if (!f1Valid) return;
+
+        // 1순위: 손 메시 자체 변색 (히트 셰이더)
+        if (TryApplyHandHeatMat())
+        {
+            for (int t = 0; t < NumTips; t++)
+            {
+                float peak = 0f; float wSum = 0f, gySum = 0f;
+                float[] d = f1Data[t];
+                for (int k = 0; k < d.Length; k++)
+                {
+                    if (d[k] > peak) peak = d[k];
+                    int r = k / f1Cols;
+                    float gy = (r - (f1Rows - 1) * 0.5f) * f1CellSpacing;
+                    wSum += d[k]; gySum += d[k] * gy;
+                }
+                if (peak < scalarThreshold || !PadFrame(t, out var center, out var lengthAxis, out _, out _))
+                { heatPts[t] = Vector4.zero; continue; }
+
+                // 접촉 무게중심(길이방향)만큼 이동한 지점을 히트 포인트로
+                Vector3 p = center + lengthAxis * (wSum > 1e-5f ? gySum / wSum : 0f);
+                heatPts[t] = new Vector4(p.x, p.y, p.z, Mathf.Clamp01(peak * 1.15f));
+            }
+            handHeatMat.SetVectorArray("_HeatPts", heatPts);
+            // 셸은 숨김
+            if (heatShells[0] != null) foreach (var go in heatShells) if (go) go.SetActive(false);
+            return;
+        }
+
+        // 폴백: 기존 정점색 셸
         EnsureHeatShells();
         // 끝마디 전체를 넉넉히 덮도록 (레퍼런스처럼 넓게 번지는 인상)
         float padLen = Mathf.Max(f1Rows * f1CellSpacing * 1.7f, 0.024f);
