@@ -76,7 +76,7 @@ OS를 오가도 Quest 앱 IP 재입력이 영영 불필요해진다 (한 번에 
 ```
 adb devices                                                  # device 확인
 adb shell am broadcast -a com.oculus.vrpowermanager.prox_close   # 절전 끔 (재부팅마다!)
-python tactile_viz_dummy.py --host <윈도우IP>                # 10초 자동 모드 순환
+python tactile_viz_dummy.py --host 192.168.50.49             # 10초 자동 모드 순환
 adb logcat -s Unity                                          # [Tactile] 로그 관찰
 ```
 
@@ -109,8 +109,8 @@ adb uninstall com.Xigbee.FrankaBot           # 서명 충돌 시 제거 후 설�
 
 - servo_teleop.py (RB5 로봇 텔레옵) — 로봇 유선망(10.0.2.x) 필요
 - rbpodo 환경, 로봇 IP 10.0.2.7, PC 유선 10.0.2.100
-- 리눅스 WiFi를 192.168.50.49 고정으로 쓰던 설정 — 윈도우 작업 중에는
-  Quest 앱 IP가 윈도우를 향하므로, 로봇+택타일 동시 작업하게 되면 IP 정리 필요
+- WiFi IP는 두 OS 모두 192.168.50.49로 통일(§4) — OS를 오가도 Quest 앱
+  IP 재입력 불필요
 
 ## 8. 다음 작업 후보 (우선순위 논의된 것)
 
