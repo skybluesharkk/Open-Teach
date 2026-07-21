@@ -138,11 +138,13 @@
 <div class="note">
   <b>실제 Quest와의 차이</b> — 여기서는 손이 고정된 일러스트지만, 헤드셋에서는 OVRSkeleton이 추적하는
   실제 손 위에 3D로 붙습니다. 시나리오는 <b>손등이 하늘, 손바닥이 지면</b>. 세 모드 모두 수정 반영:
-  <br>· <b>F1</b> 손 표면에 <b>연속으로 번지는 heat blob</b> — jet 컬러맵(파랑→초록→노랑→빨강), 접촉점에서 부드럽게 퍼짐.
-  헤드셋에서는 손끝을 감싸는 셸에 정점 색상으로 렌더되며, 아랫피부 접촉점과 관통 대응하는 윗피부 지점이 <b>같은 색 쌍</b>으로 물듦.
-  <br>· <b>F2A</b> 화살촉이 손가락 접점, 몸통이 <b>하늘로 솟음</b>(못 모양→진짜 화살표).
-  <br>· <b>F2B</b> 택셀이 <b>손끝 곡면을 감고</b> 화살표가 방사형으로 부채꼴(중심은 말단 마디).
-  <br>색상 맵(파랑 #2666ff → 빨강 #ff2619)은 TactileOverlay.cs와 동일. 키보드 <b>1 / 2 / 3</b>으로 모드 전환.
+  <br>· <b>F1</b> <b>손 메시 자체가 물듦</b> — 헤드셋에선 손 머티리얼을 히트 셰이더로 교체, 별도 레이어 없이
+  손 표면이 직접 변색. F1 모드에서 손이 어두운 톤이 되고 접촉 무게중심에서 jet 열이 피어남.
+  <br>· <b>F2A</b> 화살촉이 손가락 접점, 몸통이 <b>하늘로 솟음</b>.
+  <br>· <b>F2B</b> 택셀이 <b>손끝 곡면을 감고</b> 화살표는 <b>표면에 수직</b>(관통 대응점에서 솟음).
+  <br>· <b>회전 추종</b> — F1/F2B 프레임이 본(bone) 회전을 따라가, 손을 굴리면 시각화도 함께 회전
+  (기준축은 첫 트래킹 자세에서 학습 — 손등이 위인 자세로 시작 권장).
+  <br>6단계 jet 컬러맵(Light 파랑 → Strong 빨강)은 TactileOverlay.cs와 동일. 키보드 <b>1 / 2 / 3</b> 모드 전환.
 </div>
 
 <script>
@@ -292,10 +294,37 @@ function drawUpArrow(x0, y0, ux, uy, length, headLen, width, color, alpha = 1) {
 
 // ── 모드별 렌더 ────────────────────────────────────────────────────────
 // F1: 손끝 곡면에 감긴 택셀별 히트맵 — 각 셀이 개별 센서값으로 물듦 (한 덩어리/평면 아님)
-// F1: 손 표면에 번지는 연속 heat blob (jet 컬러맵, 이산 셀 아님)
-// 접촉 중심에서 빨강→노랑→초록→파랑→투명으로 부드럽게 퍼짐
+// F1: 손 메시 자체가 물드는 방식 (헤드셋에선 손 머티리얼을 히트 셰이더로 교체)
+// 미리보기: 손 전체를 어둡게(레퍼런스의 다크 핸드) + 접촉 무게중심에서 열이 피어남
+function drawHandDark() {
+  ctx.save();
+  // 손가락
+  for (let i = 0; i < 5; i++) {
+    const k = KNUCKLES[i], tip = TIPS[i];
+    ctx.beginPath();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = tip.w;
+    ctx.strokeStyle = '#15161c';
+    ctx.moveTo(k.x, k.y);
+    const mx = (k.x + tip.x) / 2 + (i === 0 ? -18 : 0);
+    const my = (k.y + tip.y) / 2 + (i === 0 ? 10 : -14);
+    ctx.quadraticCurveTo(mx, my, tip.x, tip.y);
+    ctx.stroke();
+  }
+  // 손바닥 + 손목
+  ctx.beginPath();
+  ctx.moveTo(PALM[0][0], PALM[0][1]);
+  for (let i = 1; i < PALM.length; i++) ctx.lineTo(PALM[i][0], PALM[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = '#15161c';
+  ctx.fill();
+  ctx.fillRect(760, 950, 210, 130);
+  ctx.restore();
+}
+
 function renderF1(t) {
   const ROWS = 4, COLS = 6, SP = 12;
+  drawHandDark();   // 손 그래픽 자체가 어두운 히트 표면이 됨 (별도 레이어 아님)
   for (let i = 0; i < 5; i++) {
     const inten = fingerIntensity(t, i);
     if (inten < 0.03) continue;
@@ -304,7 +333,7 @@ function renderF1(t) {
     let lx = tip.x - KNUCKLES[i].x, ly = tip.y - KNUCKLES[i].y;
     const lL = Math.hypot(lx, ly); lx /= lL; ly /= lL;
     const wx = -ly, wy = lx;
-    // 접촉 중심 (그리드 좌표 → 픽셀)
+    // 접촉 무게중심 (Unity와 동일 개념)
     const cr = (ROWS - 1) / 2 + (ROWS / 3) * Math.sin(t * 0.9 + i);
     const cc = (COLS - 1) / 2 + (COLS / 3) * Math.cos(t * 0.7 + i * 0.5);
     const gx = (cc - (COLS - 1) / 2) * SP * 0.8;
@@ -312,26 +341,27 @@ function renderF1(t) {
     const bx = cen.x + wx * gx + lx * gy;
     const by = cen.y + wy * gx + ly * gy;
 
-    // 손끝 전체를 덮는 은은한 파랑 베이스 (약한 힘 영역)
+    // 손 표면 위에서 피어나는 열 — 손가락 폭을 따라 클리핑해 "표면이 물드는" 인상
     ctx.save();
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = lerpColor(0.08, 0.22 + inten * 0.25);
-    ctx.lineWidth = tip.w * 0.95;
+    ctx.beginPath();
     const d = distalJoint(i);
-    ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
-    ctx.restore();
+    // 끝마디 캡슐 영역으로 클리핑
+    const capR = tip.w * 0.5;
+    ctx.moveTo(d.x + -ly * capR, d.y + lx * capR);
+    ctx.arc(tip.x, tip.y, capR, Math.atan2(ly, lx) - Math.PI / 2, Math.atan2(ly, lx) + Math.PI / 2);
+    ctx.arc(d.x, d.y, capR, Math.atan2(ly, lx) + Math.PI / 2, Math.atan2(ly, lx) - Math.PI / 2);
+    ctx.closePath();
+    ctx.clip();
 
-    // 접촉 중심의 연속 heat blob — jet 링이 자연스럽게 이어지도록 다중 스톱
-    const R = 20 + inten * 26;
+    const R = 24 + inten * 30;
     const g = ctx.createRadialGradient(bx, by, 1, bx, by, R);
-    g.addColorStop(0.00, lerpColor(inten, 0.95));
-    g.addColorStop(0.30, lerpColor(inten * 0.75, 0.85));
-    g.addColorStop(0.55, lerpColor(inten * 0.45, 0.7));
-    g.addColorStop(0.80, lerpColor(inten * 0.18, 0.45));
-    g.addColorStop(1.00, lerpColor(0.02, 0));
-    ctx.save();
+    g.addColorStop(0.00, lerpColor(inten, 1.0));
+    g.addColorStop(0.30, lerpColor(inten * 0.75, 0.95));
+    g.addColorStop(0.55, lerpColor(inten * 0.45, 0.85));
+    g.addColorStop(0.80, lerpColor(inten * 0.18, 0.6));
+    g.addColorStop(1.00, lerpColor(0.03, 0.25));
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(bx, by, R, 0, 7); ctx.fill();
+    ctx.fillRect(bx - R, by - R, R * 2, R * 2);
     ctx.restore();
   }
 }
