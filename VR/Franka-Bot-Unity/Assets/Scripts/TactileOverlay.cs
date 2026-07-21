@@ -42,7 +42,7 @@ public class TactileOverlay : MonoBehaviour
     public float fingerRadius = 0.008f;    // 손끝 곡면 반경 (m) — 택셀을 이 원통에 감음
     // 엄지 등쪽(손톱) 방향은 손바닥 법선에서 엄지 축 기준으로 회전돼 있음 (오른손 기준 왼쪽으로)
     // 방향이 반대면 Inspector에서 부호 반전
-    public float thumbRollDeg = -55f;
+    public float thumbRollDeg = 55f;   // 실기기 확인: -55는 반대 방향이었음
 
     [Header("색상")]
     public Color weakColor = new Color(0.15f, 0.45f, 1f);
