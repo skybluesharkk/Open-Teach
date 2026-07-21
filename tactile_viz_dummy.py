@@ -61,8 +61,8 @@ def finger_intensity(t, idx):
     """손끝 idx의 힘 크기 (0~1). 손가락별 위상차를 둔 파도 패턴."""
     phase  = idx * 1.1
     wave   = 0.5 * (1 + math.sin(t * 1.2 - phase))          # 0~1 큰 파도
-    pulse  = max(0.0, math.sin(t * 0.35 - idx * 1.3)) ** 3  # 손가락 순차 강조
-    v = (0.55 * wave * pulse + 0.25 * wave) * 1.25   # 최대 누름 시 1.0(빨강) 도달
+    pulse  = max(0.0, math.sin(t * 0.35 - idx * 1.3)) ** 2  # 손가락 순차 강조 (폭 넓게)
+    v = (0.60 * wave * pulse + 0.30 * wave) * 1.45   # 빨강(1.0) 도달 빈도·유지시간 증가
     return float(np.clip(v, 0.0, 1.0))
 
 
