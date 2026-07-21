@@ -66,7 +66,23 @@ adb shell am broadcast -a com.oculus.vrpowermanager.prox_close      # 절전 끔
 adb shell am broadcast -a com.oculus.vrpowermanager.automation_disable  # 원복
 ```
 
-## 5. 리눅스에서 Unity 에디터 행 (환경 문제)
+## 5. 시스템 손 제스처 오발동 → 앱이 멈춘 것처럼 보임 (코드 아님)
+
+**증상**: 시각화가 뚝뚝 끊기다가 화면이 마지막 프레임에 정지. 앱 프로세스는
+72FPS로 정상 동작 중 (UnityMain 스레드 CPU 사용 확인됨).
+
+**원인**: logcat에 `SystemGestureDetector: state 0→1` 반복 + `OVERLAY_HANDS` 인텐트.
+손바닥을 얼굴로 향한 채 엄지+검지를 모으면 OS 메뉴 제스처로 인식 —
+그 순간 핸드 트래킹을 OS가 가로채(끊김), 완전 인식되면 메뉴가 열리며
+앱이 포커스를 잃음(mFocusedApp=null, 정지 화면처럼 보임).
+택타일 테스트가 "손바닥 들여다보며 손가락 모으기"의 연속이라 오발동 빈발.
+
+**대처**:
+- 멈춘 화면 = 앱 죽은 것 아님. 손바닥 핀치로 메뉴 닫으면 즉시 복귀
+- 핀치할 때 손바닥이 얼굴을 향하지 않게 (손등을 위로)
+- 시스템 제스처는 OS 기능이라 앱에서 비활성화 불가
+
+## 6. 리눅스에서 Unity 에디터 행 (환경 문제)
 
 **증상**: Unity 2021.3 에디터가 스크립트 컴파일(bee_backend)에서 무한 멈춤.
 CPU 0%, 로그 정지. 캐시 삭제해도 동일 지점 재발.
@@ -75,7 +91,7 @@ CPU 0%, 로그 정지. 캐시 삭제해도 동일 지점 재발.
 
 **해결**: 윈도우에서 빌드 (상세 절차: [WINDOWS_BUILD.md](WINDOWS_BUILD.md)).
 
-## 6. 기타 운영 메모
+## 7. 기타 운영 메모
 
 - **PC IP 변동**: DHCP 재할당으로 IP가 바뀌면 (49→50 등) 퍼블리셔 bind 실패
   (`Cannot assign requested address`) + Quest 앱의 저장된 IP 불일치.
