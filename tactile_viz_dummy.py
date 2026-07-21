@@ -155,13 +155,18 @@ def main():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--mode", choices=["f1", "f2a", "f2b"], default="f1")
     parser.add_argument("--hz",   type=float, default=SEND_HZ)
+    parser.add_argument("--cycle", type=float, default=10.0,
+                        help="N초마다 모드 자동 순환 (0=수동, 키보드 1/2/3만)")
     args = parser.parse_args()
 
     ctx  = zmq.Context()
     sock = make_pub_socket(ctx, args.host, args.port)
     mode = args.mode
+    cycle_order = ["f1", "f2a", "f2b"]
 
     print(f"{GREEN}택타일 더미 퍼블리셔 시작{RESET}  tcp://{args.host}:{args.port}  {args.hz:.0f}Hz")
+    if args.cycle > 0:
+        print(f"자동 순환: {YELLOW}{args.cycle:.0f}초{RESET}마다 F1→F2A→F2B (키보드 1/2/3 수동 전환도 가능)")
     print(f"모드 전환: {CYAN}1{RESET}=F1(히트맵)  {CYAN}2{RESET}=F2A(손끝 벡터)  {CYAN}3{RESET}=F2B(벡터장)  + 엔터")
     print(f"현재 모드: {YELLOW}{mode.upper()}{RESET}\n")
 
@@ -169,6 +174,7 @@ def main():
     t0 = time.time()
     sent = 0
     last_report = t0
+    last_switch = t0
 
     try:
         while True:
@@ -178,9 +184,16 @@ def main():
             key = read_key_nonblocking()
             if key in MODE_KEYS:
                 mode = MODE_KEYS[key]
+                last_switch = now   # 수동 전환 시 자동 순환 타이머 리셋
                 print(f"\n모드 변경 → {YELLOW}{mode.upper()}{RESET}")
             elif key in ("q", "quit", "exit"):
                 break
+
+            # 자동 순환: cycle초마다 다음 모드로
+            if args.cycle > 0 and now - last_switch >= args.cycle:
+                mode = cycle_order[(cycle_order.index(mode) + 1) % len(cycle_order)]
+                last_switch = now
+                print(f"\n[자동 순환] → {YELLOW}{mode.upper()}{RESET}")
 
             packet = PACKERS[mode](t)
             sock.send_string(packet)
