@@ -406,13 +406,11 @@ function renderF2B(t) {
         const gy = (r - (ROWS - 1) / 2) * SP;
         const px = cen.x + wx * gxEff + lx * gy;
         const py = cen.y + wy * gxEff + ly * gy;
-        // 방향: 하늘 기준에서 theta만큼 바깥으로 부채꼴(방사형)
-        const base = skyDir(i, fxv, fzv);
-        let ux = base.ux + wx * Math.sin(theta) * 1.1;
-        let uy = base.uy + wy * Math.sin(theta) * 1.1;
-        const L = Math.hypot(ux, uy); ux /= L; uy /= L;
+        // 방향: 손가락당 하나로 통일(손등 법선과 평행) — 부채꼴은 방향에
+        // 의미가 있는 것처럼 오해 유발. 크기·색이 힘을 표현
+        const base = skyDir(i, 0, fzv);
         const k = Math.min(1, fzv / 5);
-        drawUpArrow(px, py, ux, uy, 15 + fzv * 11, 11, 3.4, lerpColor(k), 0.96);
+        drawUpArrow(px, py, base.ux, base.uy, 15 + fzv * 11, 11, 3.4, lerpColor(k), 0.96);
       }
     }
   }

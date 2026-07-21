@@ -756,9 +756,10 @@ public class TactileOverlay : MonoBehaviour
                     Vector3 tArc   = -st * normal + ct * widthAxis;     // 호 접선
 
                     Vector3 start = center + lengthAxis * gy + fingerRadius * nLocal;
-                    // 눌린 아랫피부 택셀의 관통 대응점(윗피부)에서 표면에 수직으로 솟음
-                    // (F1의 관통 쌍 개념과 동일 — 크기·색은 힘 크기 |F| 반영)
-                    Vector3 dir = nLocal;
+                    // 위치는 곡면에 감긴 관통 대응점 그대로, 방향은 손가락당 하나로 통일 —
+                    // 모든 화살표가 손등 법선과 평행 (곡면 법선 부채꼴은 방향에 의미가
+                    // 있는 것처럼 오해를 유발). 크기·색이 힘 크기 |F|를 표현.
+                    Vector3 dir = normal;
                     if (!Finite(start) || dir.sqrMagnitude < 1e-8f) { arrow.SetActive(false); continue; }
                     float len = Mathf.Min(mag * gridForceToLength, maxArrowLength * 0.5f);
                     arrow.SetActive(true);
