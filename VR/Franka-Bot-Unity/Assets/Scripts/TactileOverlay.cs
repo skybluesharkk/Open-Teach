@@ -35,9 +35,9 @@ public class TactileOverlay : MonoBehaviour
     public float maxArrowLength = 0.09f;
     public float shaftWidth = 0.0035f;
     public float headLength = 0.014f;
-    public float gridShaftWidth = 0.0014f;
-    public float gridHeadLength = 0.006f;
-    public float gridSpacing = 0.003f;
+    public float gridShaftWidth = 0.0011f;  // 촘촘한 그리드에 맞게 가늘게
+    public float gridHeadLength = 0.005f;
+    public float gridSpacing = 0.0024f;     // 5x8 그리드가 끝마디 폭에 맞도록
     public float gridForceToLength = 0.008f;
     public float fingerRadius = 0.008f;    // 손끝 곡면 반경 (m) — 택셀을 이 원통에 감음
 

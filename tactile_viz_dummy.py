@@ -34,9 +34,10 @@ DEFAULT_HOST = "192.168.50.49"
 DEFAULT_PORT = 15002
 SEND_HZ      = 30
 
-# F2B 그리드 (XHand 실센서는 손끝당 120점 — 렌더 부하 고려해 더미는 4x6=24점)
-GRID_ROWS = 4
-GRID_COLS = 6
+# F2B 그리드 (XHand 실센서는 손끝당 120점 — 더미는 5x8=40점, 밀도↑=변형장 느낌)
+# Unity가 패킷의 rows,cols로 풀을 재생성하므로 여기만 바꾸면 됨 (재빌드 불필요, 상한 96)
+GRID_ROWS = 5
+GRID_COLS = 8
 
 FINGERS = ["thumb", "index", "middle", "ring", "pinky"]
 
