@@ -79,8 +79,12 @@ public class GraphStream : MonoBehaviour
             if (String.Equals(communicationAddress, netConfig.getGraphAddress()))
             {
                 // Getting the image from the queue and displaying it
-                byte[] imageBytes = graphList[graphList.Count - 1];
-                texture.LoadImage(imageBytes);
+                // 퍼블리셔가 없어 리스트가 비면 매 프레임 예외 → 가드 추가
+                if (graphList.Count > 0)
+                {
+                    byte[] imageBytes = graphList[graphList.Count - 1];
+                    texture.LoadImage(imageBytes);
+                }
             }
             else
             {

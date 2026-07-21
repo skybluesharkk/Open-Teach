@@ -169,7 +169,8 @@ class GestureDetector : MonoBehaviour
         RightHandDataString = TypeMarker + ":" + RightHandDataString;
 
         client.SendFrame(RightHandDataString);
-        byte[] recievedToken = client.ReceiveFrameBytes();
+        // PushSocket은 수신 불가 — 아래 호출은 매 프레임 NotSupportedException을 던졌음 (제거)
+        // byte[] recievedToken = client.ReceiveFrameBytes();
     }
 
 
@@ -230,7 +231,7 @@ class GestureDetector : MonoBehaviour
 
                 client2.SendFrame("None"); 
                 //recievedToken = client2.ReceiveFrameBytes();  
-                Debug.Log("No button was pressed");
+                // Debug.Log("No button was pressed");   // 매 프레임 로그 스팸 제거
                 //byte[] recievedToken2 = client2.ReceiveFrameBytes();
 
             }

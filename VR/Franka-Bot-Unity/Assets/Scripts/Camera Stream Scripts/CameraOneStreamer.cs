@@ -80,8 +80,12 @@ public class CameraOneStreamer : MonoBehaviour
             if (String.Equals(communicationAddress, netConfig.getCamAddress()))
             {
                 // Getting the image from the queue and displaying it
-                byte[] imageBytes = imageList[imageList.Count - 1];
-                texture.LoadImage(imageBytes);
+                // 퍼블리셔가 없어 리스트가 비면 매 프레임 예외 → 가드 추가
+                if (imageList.Count > 0)
+                {
+                    byte[] imageBytes = imageList[imageList.Count - 1];
+                    texture.LoadImage(imageBytes);
+                }
             }
             else
             {
