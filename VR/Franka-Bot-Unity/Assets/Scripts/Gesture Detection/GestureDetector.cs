@@ -99,29 +99,28 @@ class GestureDetector : MonoBehaviour
 
    
 
+    // 씬에 참조가 비어 있어도 NRE가 나지 않도록 null 가드
+    // (PushSocket 예외 제거 후 처음 실행되는 경로에서 미할당 참조가 드러남)
     public void ToggleMenuButton(bool toggle)
     {
-        MenuButton.SetActive(toggle);
-        LineRenderer.enabled = toggle;
+        if (MenuButton != null) MenuButton.SetActive(toggle);
+        if (LineRenderer != null) LineRenderer.enabled = toggle;
     }
 
     public void ToggleResolutionButton(bool toggle)
     {
-        ResolutionButton.SetActive(toggle);
-        LineRenderer.enabled = toggle;
+        if (ResolutionButton != null) ResolutionButton.SetActive(toggle);
+        if (LineRenderer != null) LineRenderer.enabled = toggle;
     }
 
     public void ToggleHighResolutionButton(bool toggle)
     {
-        HighResolutionButton.SetActive(toggle);
-        
+        if (HighResolutionButton != null) HighResolutionButton.SetActive(toggle);
     }
 
     public void ToggleLowResolutionButton(bool toggle)
     {
-        LowResolutionButton.SetActive(toggle);
-
-
+        if (LowResolutionButton != null) LowResolutionButton.SetActive(toggle);
     }
     // Start function
     void Start()
@@ -179,7 +178,7 @@ class GestureDetector : MonoBehaviour
        
         //printf("Address available", Address)
        
-        // client2.SendFrame("None");
+        // if (client2 != null) client2.SendFrame("None");
         // byte[] recievedToken = client2.ReceiveFrameBytes();
         ResolutionAddress = netConfig.getResolutionAddress();
         bool Available = !String.Equals(ResolutionAddress, "tcp://:");
@@ -206,7 +205,7 @@ class GestureDetector : MonoBehaviour
         
         if (resolutionconnectionEstablished)
         {
-            if (HighResolutionButtonController.HighResolution)
+            if (HighResolutionButtonController != null && HighResolutionButtonController.HighResolution)
             {   
                 state="High";
                 client2.SendFrame(state);
@@ -216,7 +215,7 @@ class GestureDetector : MonoBehaviour
                 //byte[] recievedToken2 = client2.ReceiveFrameBytes();
             }
 
-            else if (LowResolutionButtonController.LowResolution)
+            else if (LowResolutionButtonController != null && LowResolutionButtonController.LowResolution)
             {   
                 state="Low";
                 client2.SendFrame(state);
@@ -229,7 +228,7 @@ class GestureDetector : MonoBehaviour
             else 
             {   
 
-                client2.SendFrame("None"); 
+                if (client2 != null) client2.SendFrame("None"); 
                 //recievedToken = client2.ReceiveFrameBytes();  
                 // Debug.Log("No button was pressed");   // 매 프레임 로그 스팸 제거
                 //byte[] recievedToken2 = client2.ReceiveFrameBytes();
@@ -238,7 +237,7 @@ class GestureDetector : MonoBehaviour
         }
         else
         {
-            client2.SendFrame("None");
+            if (client2 != null) client2.SendFrame("None");
         }
     }
 
@@ -247,7 +246,7 @@ class GestureDetector : MonoBehaviour
        
         //printf("Address available", Address)
        
-        // client2.SendFrame("None");
+        // if (client2 != null) client2.SendFrame("None");
         // byte[] recievedToken = client2.ReceiveFrameBytes();
         PauseAddress = netConfig.getPauseAddress();
         bool PauseAvailable = !String.Equals(PauseAddress, "tcp://:");
@@ -279,13 +278,13 @@ class GestureDetector : MonoBehaviour
             } else {
                 pauseState = "Low";
             }
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
         }
         else 
         {
             
             pauseState="None";
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
         }
         
 
@@ -296,7 +295,7 @@ class GestureDetector : MonoBehaviour
        
         //printf("Address available", Address)
        
-        // client2.SendFrame("None");
+        // if (client2 != null) client2.SendFrame("None");
         // byte[] recievedToken = client2.ReceiveFrameBytes();
         PauseAddress = netConfig.getPauseAddress();
         bool PauseAvailable = !String.Equals(PauseAddress, "tcp://:");
@@ -325,14 +324,14 @@ class GestureDetector : MonoBehaviour
         {
            
             pauseState="High";
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
             
         }
         else 
         {
             
             pauseState="None";
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
         }
         
 
@@ -343,7 +342,7 @@ class GestureDetector : MonoBehaviour
        
         //printf("Address available", Address)
        
-        // client2.SendFrame("None");
+        // if (client2 != null) client2.SendFrame("None");
         // byte[] recievedToken = client2.ReceiveFrameBytes();
         PauseAddress = netConfig.getPauseAddress();
         bool PauseAvailable = !String.Equals(PauseAddress, "tcp://:");
@@ -372,14 +371,14 @@ class GestureDetector : MonoBehaviour
         {
            
             pauseState="Low";
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
             
         }
         else 
         {
             
             pauseState="None";
-            client3.SendFrame(pauseState);
+            if (client3 != null) client3.SendFrame(pauseState);
         }
         
 
